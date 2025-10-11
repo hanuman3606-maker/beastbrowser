@@ -1,0 +1,201 @@
+{
+  "name": "beast-browser",
+  "version": "2.0.1",
+  "description": "Advanced Anti-Detection Browser with Proxy Support",
+  "main": "electron/main.js",
+  "author": "BeastBrowser Team",
+  "homepage": ".",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beastbrowser2-ui/beastbrowser.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview",
+    "electron-dev": "electron . --trace-warnings",
+    "electron-pack": "electron-builder",
+    "preelectron-pack": "npm run build",
+    "dist": "npm run build && electron-builder",
+    "pack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:mac": "npm run build && electron-builder --mac --publish never",
+    "build:linux": "npm run build && electron-builder --linux --publish never",
+    "publish:github": "npm run build && electron-builder --win --publish always",
+    "release": "node scripts/release.js"
+  },
+  "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.12",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-aspect-ratio": "^1.1.7",
+    "@radix-ui/react-avatar": "^1.1.10",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-context-menu": "^2.2.16",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-hover-card": "^1.1.15",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-menubar": "^1.1.16",
+    "@radix-ui/react-navigation-menu": "^1.2.14",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-radio-group": "^1.3.8",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.7",
+    "@radix-ui/react-slider": "^1.3.6",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-toast": "^1.2.15",
+    "@radix-ui/react-toggle": "^1.1.10",
+    "@radix-ui/react-toggle-group": "^1.1.11",
+    "@radix-ui/react-toolbar": "^1.1.11",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@supabase/supabase-js": "^2.74.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "electron-log": "^5.0.1",
+    "electron-updater": "^6.6.2",
+    "firebase": "^12.3.0",
+    "http-proxy": "^1.18.1",
+    "http-proxy-agent": "^7.0.0",
+    "https-proxy-agent": "^7.0.2",
+    "lucide-react": "^0.294.0",
+    "node-fetch": "^2.7.0",
+    "proxy-chain": "^2.5.9",
+    "puppeteer": "^24.22.2",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socks": "^2.8.7",
+    "socks-proxy-agent": "^8.0.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^2.0.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "@vitejs/plugin-react": "^4.1.1",
+    "autoprefixer": "^10.4.16",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "eslint": "^8.53.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.4",
+    "png-to-ico": "^3.0.1",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.2.2",
+    "typescript-eslint": "^8.44.1",
+    "vite": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.beastbrowser.app",
+    "productName": "BeastBrowser",
+    "directories": {
+      "output": "build-output"
+    },
+    "files": [
+      "dist-new/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "useragents/**/*",
+      "src/types/**/*",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/puppeteer/.local-chromium/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "useragents",
+        "to": "useragents",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "electron",
+        "to": "electron",
+        "filter": [
+          "firebase-service.js",
+          "preload-firebase.js",
+          "preload-payment.js",
+          "profile-limit-manager.js",
+          "free.ico"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/free.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "publisherName": "BeastBrowser Team",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BeastBrowser",
+      "installerIcon": "public/free.ico",
+      "uninstallerIcon": "public/free.ico",
+      "installerHeaderIcon": "public/free.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "license": false,
+      "perMachine": false,
+      "differentialPackage": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "icon": "public/free.png",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "icon": "public/free.png",
+      "category": "Network"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "beastbrowser2-ui",
+        "repo": "beastbrowser",
+        "releaseType": "release"
+      }
+    ],
+    "compression": "maximum",
+    "removePackageScripts": true
+  }
+}
