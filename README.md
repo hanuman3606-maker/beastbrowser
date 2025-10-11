@@ -2,8 +2,8 @@
 
 > Advanced Anti-Detection Browser with Proxy Support and Browser Automation
 
-[![Build Status](https://github.com/beastbrowser2-ui/beastbrowser/workflows/Manual%20Build/badge.svg)](https://github.com/beastbrowser2-ui/beastbrowser/actions)
-[![Release](https://img.shields.io/github/v/release/beastbrowser2-ui/beastbrowser)](https://github.com/beastbrowser2-ui/beastbrowser/releases)
+[![Build Status](https://github.com/rohitmen394/beastbrowser/workflows/Manual%20Build/badge.svg)](https://github.com/rohitmen394/beastbrowser/actions)
+[![Release](https://img.shields.io/github/v/release/rohitmen394/beastbrowser)](https://github.com/rohitmen394/beastbrowser/releases)
 [![License](https://img.shields.io/badge/license-Proprietary-blue.svg)](LICENSE)
 
 ---
@@ -55,7 +55,7 @@
 
 ### Download Latest Release
 
-1. Go to [Releases](https://github.com/beastbrowser2-ui/beastbrowser/releases)
+1. Go to [Releases](https://github.com/rohitmen394/beastbrowser/releases)
 2. Download `BeastBrowser-Setup-2.0.1.exe`
 3. Run the installer
 4. Follow the setup wizard
@@ -80,7 +80,7 @@
 ### Clone Repository
 
 ```bash
-git clone https://github.com/beastbrowser2-ui/beastbrowser.git
+git clone https://github.com/rohitmen394/beastbrowser.git
 cd beastbrowser
 ```
 
@@ -249,7 +249,7 @@ This is proprietary software. Unauthorized copying, distribution, or modificatio
 
 - **Website:** https://beastbrowser.com
 - **Email:** support@beastbrowser.com
-- **GitHub Issues:** [Report Bug](https://github.com/beastbrowser2-ui/beastbrowser/issues)
+- **GitHub Issues:** [Report Bug](https://github.com/rohitmen394/beastbrowser/issues)
 
 ---
 

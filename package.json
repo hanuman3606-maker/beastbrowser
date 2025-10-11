@@ -7,7 +7,7 @@
   "homepage": ".",
   "repository": {
     "type": "git",
-    "url": "https://github.com/beastbrowser2-ui/beastbrowser.git"
+    "url": "https://github.com/rohitmen394/beastbrowser.git"
   },
   "scripts": {
     "dev": "vite",
@@ -190,7 +190,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "beastbrowser2-ui",
+        "owner": "rohitmen394",
         "repo": "beastbrowser",
         "releaseType": "release"
       }
