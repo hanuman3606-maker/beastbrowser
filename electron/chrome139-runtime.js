@@ -76,15 +76,15 @@ class Chrome139Runtime {
     console.log('📦 Packaged:', app && app.isPackaged);
 
     const possiblePaths = [
-      // Bundled Chrome 139 folder (highest priority)
+      // Development mode - ungoogled-chromium in project root
       path.join(appPath, 'ungoogled-chromium_139.0.7258.154-1.1_windows_x64', 'chrome.exe'),
       path.join(appPath, 'chrome139', 'chrome.exe'),
-      // User folder installations
+      // Production mode - ungoogled-chromium in resources folder (packaged by electron-builder)
+      path.join(appPath, 'resources', 'ungoogled-chromium_139.0.7258.154-1.1_windows_x64', 'chrome.exe'),
+      // User folder installations (for portable/custom installs)
       path.join(os.homedir(), 'BeastBrowser', 'chrome', 'chrome.exe'),
-      path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'BeastBrowser', 'chrome', 'chrome.exe'),
-      // Fallback to system Chrome if installed
-      path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe')
+      path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'BeastBrowser', 'chrome', 'chrome.exe')
+      // NOTE: System Chrome removed as fallback - we only use bundled ungoogled-chromium for production
     ];
 
     for (const chromePath of possiblePaths) {

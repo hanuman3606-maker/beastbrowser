@@ -17,9 +17,9 @@
     "electron-dev": "electron . --trace-warnings",
     "electron-pack": "electron-builder",
     "preelectron-pack": "npm run build",
-    "postinstall": "node -e \"try{require('puppeteer').executablePath()}catch(e){console.log('Chromium will be downloaded during build')}\"",
-    "copy-chromium": "node scripts/copy-chromium.js",
-    "prebuild:win": "npm run build && npm run copy-chromium",
+    "postinstall": "npx playwright install chromium",
+    "copy-all-browsers": "node scripts/copy-all-browsers.js",
+    "postbuild:win": "npm run copy-all-browsers",
     "dist": "npm run build && electron-builder",
     "pack": "npm run build && electron-builder --dir",
     "build:win": "electron-builder --win --publish never",
@@ -120,16 +120,9 @@
       "package.json"
     ],
     "asarUnpack": [
-      "node_modules/puppeteer/.local-chromium/**/*"
+      "node_modules/playwright/**/*"
     ],
     "extraResources": [
-      {
-        "from": "chromium-bundle",
-        "to": "chromium-cache",
-        "filter": [
-          "**/*"
-        ]
-      },
       {
         "from": "public",
         "to": "public",
@@ -154,6 +147,13 @@
           "profile-limit-manager.js",
           "free.ico"
         ]
+      },
+      {
+        "from": "ungoogled-chromium_139.0.7258.154-1.1_windows_x64",
+        "to": "ungoogled-chromium_139.0.7258.154-1.1_windows_x64",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -168,7 +168,9 @@
       "icon": "public/free.ico",
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "publisherName": "BeastBrowser Team",
-      "verifyUpdateCodeSignature": false
+      "verifyUpdateCodeSignature": false,
+      "sign": false,
+      "signingHashAlgorithms": []
     },
     "nsis": {
       "oneClick": false,

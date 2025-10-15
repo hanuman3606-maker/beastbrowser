@@ -14,6 +14,10 @@ dist-ssr
 chromium-bundle
 build-output
 
+# Large files (don't push to GitHub - only use in builds)
+ungoogled-chromium_139.0.7258.154-1.1_windows_x64/
+useragents/*.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
