@@ -13,6 +13,9 @@ const fs = require('fs');
 const socks5Handler = require('./socks5-handler');
 const { detectHTTPProxyTimezone } = require('./http-proxy-timezone');
 
+// Playwright auto-installer
+const playwrightInstaller = require('./playwright-installer');
+
 class PlaywrightMobileLauncher {
   constructor() {
     this.activeBrowsers = new Map();
@@ -124,6 +127,25 @@ class PlaywrightMobileLauncher {
   async launchMobile(profile) {
     try {
       console.log(`🚀 Launching Playwright mobile browser for: ${profile.name} (${profile.id})`);
+      
+      // ✅ AUTO-INSTALL: Check and install Chrome browser if missing
+      console.log('🔍 Checking Chrome browser installation...');
+      if (!playwrightInstaller.isChromiumInstalled()) {
+        console.log('⚠️ Chrome browser not found! Downloading...');
+        console.log('📥 Downloading Chrome... This may take 2-3 minutes (one-time only)');
+        
+        const installResult = await playwrightInstaller.install();
+        if (!installResult.success) {
+          return {
+            success: false,
+            error: `Chrome browser download failed: ${installResult.message}\n\nPlease restart the app and try again.`
+          };
+        }
+        
+        console.log('✅ Chrome browser downloaded successfully!');
+      } else {
+        console.log('✅ Chrome browser ready');
+      }
       
       const platform = (profile.platform || '').toLowerCase();
       // Pass profile ID to get unique UA
