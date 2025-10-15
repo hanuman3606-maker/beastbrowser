@@ -193,6 +193,23 @@ class SupabaseSubscriptionService {
     subscription?: SupabaseSubscription;
   }> {
     try {
+      // Check if we need daily validation
+      const lastValidationKey = `subscription_validation_${email}`;
+      const lastValidation = localStorage.getItem(lastValidationKey);
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // If already validated today, use cached result
+      if (lastValidation) {
+        const cached = JSON.parse(lastValidation);
+        if (cached.date === today && cached.subscription) {
+          console.log('✅ Using cached validation (already checked today)');
+          return {
+            allowed: true,
+            subscription: cached.subscription
+          };
+        }
+      }
+      
       console.log('🔍 Validating profile creation for:', email);
       
       // First check and update expired subscriptions
@@ -230,6 +247,14 @@ class SupabaseSubscriptionService {
         daysRemaining,
         expiresAt: subscription.expires_at
       });
+      
+      // Cache validation result for today
+      localStorage.setItem(lastValidationKey, JSON.stringify({
+        date: today,
+        subscription,
+        daysRemaining
+      }));
+      console.log('💾 Validation cached for today');
       
       return {
         allowed: true,

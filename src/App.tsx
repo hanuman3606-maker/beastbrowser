@@ -4,7 +4,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import AuthPage from '@/components/auth/AuthPage';
 import Sidebar from '@/components/layout/Sidebar';
-import { Profile } from '@/components/profiles/CreateProfileModal';
 import { ProfileCreationFlow } from '@/components/profiles/ProfileCreationFlow'; // Updated import
 import ProxyManager from '@/components/proxies/ProxyManager';
 import { RPADashboard } from '@/components/rpa';
@@ -12,19 +11,22 @@ import SettingsPanel from '@/components/settings/SettingsPanel';
 import UserAccount from '@/components/auth/UserAccount';
 import ReferralSystem from '@/components/ReferralSystem';
 import SupportTeam from '@/components/SupportTeam';
+import { useProfileStorage } from '@/hooks/useProfileStorage';
 
 function AppContent() {
   const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState('profiles');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  
+  // Use the new profile storage hook for persistent storage
+  const { profiles, setProfiles } = useProfileStorage();
 
   // Show auth page if user is not logged in
   if (!currentUser) {
     return <AuthPage />;
   }
 
-  const handleProfilesChange = (newProfiles: Profile[]) => {
+  const handleProfilesChange = (newProfiles: any[]) => {
     setProfiles(newProfiles);
   };
 

@@ -1,7 +1,7 @@
 {
   "name": "beast-browser",
-  "version": "2.0.1",
-  "description": "Advanced Anti-Detection Browser with Proxy Support",
+  "version": "2.0.3",
+  "description": "Advanced Anti-Detection Browser with Proxy Support & RPA Automation",
   "main": "electron/main.js",
   "author": "BeastBrowser Team",
   "homepage": ".",
@@ -17,9 +17,12 @@
     "electron-dev": "electron . --trace-warnings",
     "electron-pack": "electron-builder",
     "preelectron-pack": "npm run build",
+    "postinstall": "node -e \"try{require('puppeteer').executablePath()}catch(e){console.log('Chromium will be downloaded during build')}\"",
+    "copy-chromium": "node scripts/copy-chromium.js",
+    "prebuild:win": "npm run build && npm run copy-chromium",
     "dist": "npm run build && electron-builder",
     "pack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:win": "electron-builder --win --publish never",
     "build:mac": "npm run build && electron-builder --mac --publish never",
     "build:linux": "npm run build && electron-builder --linux --publish never",
     "publish:github": "npm run build && electron-builder --win --publish always",
@@ -55,6 +58,8 @@
     "@radix-ui/react-toolbar": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "^2.74.0",
+    "archiver": "^7.0.1",
+    "axios": "^1.12.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "electron-log": "^5.0.1",
@@ -65,6 +70,7 @@
     "https-proxy-agent": "^7.0.2",
     "lucide-react": "^0.294.0",
     "node-fetch": "^2.7.0",
+    "playwright": "^1.56.0",
     "proxy-chain": "^2.5.9",
     "puppeteer": "^24.22.2",
     "puppeteer-extra": "^3.3.6",
@@ -75,7 +81,8 @@
     "socks-proxy-agent": "^8.0.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.0.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "unzipper": "^0.12.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.37",
@@ -116,6 +123,13 @@
       "node_modules/puppeteer/.local-chromium/**/*"
     ],
     "extraResources": [
+      {
+        "from": "chromium-bundle",
+        "to": "chromium-cache",
+        "filter": [
+          "**/*"
+        ]
+      },
       {
         "from": "public",
         "to": "public",

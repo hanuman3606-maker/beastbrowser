@@ -29,10 +29,14 @@ export default function ProfileCreationGuard({
   const [subscriptionMessage, setSubscriptionMessage] = useState<string | null>(null);
   const [daysRemaining, setDaysRemaining] = useState<number>(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasValidated, setHasValidated] = useState(false);
 
   useEffect(() => {
-    validateSubscription();
-  }, [currentUser]);
+    // Only validate once when component first mounts
+    if (!hasValidated && currentUser) {
+      validateSubscription();
+    }
+  }, [currentUser, hasValidated]);
 
   const validateSubscription = async () => {
     if (!currentUser || !currentUser.email) {
@@ -51,7 +55,7 @@ export default function ProfileCreationGuard({
 
       if (validation.allowed && validation.subscription) {
         // Calculate days remaining
-        const endDate = new Date(validation.subscription.end_date);
+        const endDate = new Date(validation.subscription.expires_at);
         const now = new Date();
         const diffTime = endDate.getTime() - now.getTime();
         const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -59,19 +63,24 @@ export default function ProfileCreationGuard({
         setHasActiveSubscription(true);
         setDaysRemaining(Math.max(0, days));
         setSubscriptionMessage(null);
+        setHasValidated(true); // Mark as validated
         onValidationComplete?.(true);
         
-        // Show subscription status
-        toast.success(`Active ${validation.subscription.plan_name} - ${days} days remaining`);
+        // Show subscription status (only on first validation, not on tab switch)
+        if (!hasValidated) {
+          toast.success(`Active ${validation.subscription.plan_type} - ${days} days remaining`);
+        }
       } else {
         setHasActiveSubscription(false);
         setSubscriptionMessage(validation.reason || 'No active subscription found');
+        setHasValidated(true); // Mark as validated even if failed
         onValidationComplete?.(false);
       }
     } catch (error) {
       console.error('Error validating subscription:', error);
       setHasActiveSubscription(false);
       setSubscriptionMessage('Error validating subscription. Please try again.');
+      setHasValidated(true); // Mark as validated even on error
       onValidationComplete?.(false);
     } finally {
       setIsValidating(false);
@@ -88,6 +97,7 @@ export default function ProfileCreationGuard({
 
   const handleRefreshSubscription = async () => {
     setIsRefreshing(true);
+    setHasValidated(false); // Reset validation flag to allow re-validation
     toast.info('Checking subscription status...');
     await validateSubscription();
     setIsRefreshing(false);

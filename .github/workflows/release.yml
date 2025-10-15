@@ -41,6 +41,7 @@ jobs:
         with:
           files: |
             build-output/*.exe
+            build-output/*.yml
           tag_name: v${{ steps.version.outputs.VERSION }}
           name: BeastBrowser v${{ steps.version.outputs.VERSION }}
           body: |

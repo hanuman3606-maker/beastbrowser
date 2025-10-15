@@ -1,0 +1,127 @@
+🔍 PLATFORM DETECTION ISSUE - DEBUGGING SUMMARY
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 ISSUE:
+User selects Android platform in UI, but:
+1. Browser launches with Windows user-agent
+2. Mobile viewport not applied
+3. Desktop size instead of mobile size
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ WHAT'S CONFIRMED WORKING:
+
+1. UI Platform Selection:
+   File: src/components/profiles/CreateProfileModal.tsx
+   Line 681: <Select value={platform} onValueChange={setPlatform}>
+   Values: "windows", "macos", "linux", "android", "ios", "tv"
+   ✅ Platform is captured correctly in UI
+
+2. Profile Creation:
+   Line 576: platform: platform,  // Field is set
+   Line 582: userAgentPlatform: platform,  // Also set
+   ✅ Both fields are being set when profile is created
+
+3. Profile Storage:
+   File: electron/profile-storage-service.js
+   ✅ Profile object is saved as-is (JSON encrypted)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 DEBUG LOGS ADDED:
+
+File: electron/chrome139-runtime.js
+
+Location 1 (Line 286-288):
+console.log('🔍 PROFILE DEBUG: profile.platform =', profile.platform);
+const platform = profile.platform ? profile.platform.toLowerCase() : null;
+console.log('🔍 PLATFORM DEBUG: Normalized platform =', platform);
+
+Location 2 (Line 355-359):
+console.log('🔍 DEBUG: Platform value:', platform, '(type:', typeof platform, ')');
+console.log('🔍 DEBUG: profile.platform:', profile.platform);
+const isMobile = platform === 'android' || platform === 'ios';
+console.log('🔍 DEBUG: isMobile:', isMobile);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🧪 TEST PROCEDURE:
+
+1. Build:
+   npm run build
+
+2. Run:
+   npm run electron-dev
+
+3. Create Profile:
+   - Click "New Profile"
+   - Name: "Test Android"
+   - Platform: Select "Android" from dropdown
+   - Save
+
+4. Check Main Console (where npm run electron-dev is running):
+   Look for these logs:
+
+   Expected Output (CORRECT):
+   ═══════════════════════════════════════
+   🔍 PROFILE DEBUG: profile.platform = android
+   🔍 PLATFORM DEBUG: Normalized platform = android
+   ✅ MOBILE VIEWPORT EXTENSION LOADED FOR: ANDROID
+   🔍 DEBUG: Platform value: android (type: string)
+   🔍 DEBUG: profile.platform: android
+   🔍 DEBUG: isMobile: true
+   📱 Android: Mobile user-agent set - Extension will handle viewport
+   ═══════════════════════════════════════
+
+   Wrong Output (BUG):
+   ═══════════════════════════════════════
+   🔍 PROFILE DEBUG: profile.platform = undefined (or Windows)
+   🔍 PLATFORM DEBUG: Normalized platform = null (or windows)
+   🔍 DEBUG: Platform value: null (or windows)
+   🔍 DEBUG: isMobile: false
+   🖥️ Desktop mode: Using windows user-agent
+   ═══════════════════════════════════════
+
+5. Launch Profile:
+   - Right-click on profile
+   - Click "Launch"
+   - Watch console output
+
+6. Verify in Browser:
+   - Press F12
+   - Console tab
+   - Type: navigator.userAgent
+   - Should contain "Android" and "Mobile"
+   - Type: window.innerWidth
+   - Should be 412 (Android) or 390 (iOS)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 WHAT TO SHARE:
+
+Please share the console output from step 4 above, specifically:
+
+1. When profile is created (console after clicking Save)
+2. When profile is launched (console after clicking Launch)
+3. The debug logs starting with 🔍
+
+This will show exactly where the platform value is being lost.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 EXPECTED BEHAVIOR:
+
+Android Profile:
+✅ User-Agent: Contains "Android" and "Mobile"
+✅ Window Size: 412x915
+✅ Mobile Viewport Extension: Loaded
+✅ Website: Shows mobile version
+
+iOS Profile:
+✅ User-Agent: Contains "iPhone" and "Mobile"  
+✅ Window Size: 390x844
+✅ Mobile Viewport Extension: Loaded
+✅ Website: Shows mobile version
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

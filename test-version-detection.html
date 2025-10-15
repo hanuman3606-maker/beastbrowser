@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Version Detection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #2196F3;
+        }
+        .test-title {
+            font-weight: bold;
+            color: #2196F3;
+            margin-bottom: 10px;
+        }
+        .result {
+            font-family: 'Courier New', monospace;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            margin: 5px 0;
+        }
+        .pass {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .fail {
+            color: #f44336;
+            font-weight: bold;
+        }
+        .warning {
+            color: #FF9800;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #2196F3;
+            color: white;
+        }
+        tr:hover {
+            background: #f5f5f5;
+        }
+        .summary {
+            padding: 20px;
+            background: #E3F2FD;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Chrome Version Detection Test</h1>
+        <p>This page tests all methods websites use to detect your Chrome version.</p>
+        
+        <div style="text-align: center; margin: 20px 0; padding: 15px; background: #f0f0f0; border-radius: 5px;">
+            <a href="https://www.google.com" style="font-size: 18px; color: #1a73e8; text-decoration: none; font-weight: bold;">
+                🔍 Search on Google
+            </a>
+            <span style="margin: 0 15px;">|</span>
+            <a href="https://browserleaks.com/javascript" target="_blank" style="font-size: 16px; color: #1a73e8; text-decoration: none;">
+                Test on BrowserLeaks
+            </a>
+            <span style="margin: 0 15px;">|</span>
+            <a href="https://abrahamjuliot.github.io/creepjs/" target="_blank" style="font-size: 16px; color: #1a73e8; text-decoration: none;">
+                Test on CreepJS
+            </a>
+        </div>
+        
+        <div class="summary" id="summary">
+            <h2>Summary</h2>
+            <div id="summaryContent">Running tests...</div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">1. navigator.userAgent</div>
+            <div class="result" id="userAgent"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">2. navigator.appVersion</div>
+            <div class="result" id="appVersion"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">3. navigator.userAgentData (Client Hints API)</div>
+            <div class="result" id="userAgentData"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">4. navigator.userAgentData.brands</div>
+            <div class="result" id="brands"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">5. navigator.userAgentData.getHighEntropyValues()</div>
+            <div class="result" id="highEntropy"></div>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">6. All Detected Versions</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Detection Method</th>
+                        <th>Detected Version</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="versionTable"></tbody>
+            </table>
+        </div>
+
+        <div class="test-section">
+            <div class="test-title">7. Additional Navigator Properties</div>
+            <div class="result" id="additionalProps"></div>
+        </div>
+    </div>
+
+    <script>
+        async function runTests() {
+            const results = {
+                detectedVersions: [],
+                allMatch: true,
+                targetVersion: null
+            };
+
+            // Test 1: navigator.userAgent
+            const userAgent = navigator.userAgent;
+            document.getElementById('userAgent').textContent = userAgent;
+            const uaMatch = userAgent.match(/Chrome\/(\d+)/);
+            if (uaMatch) {
+                results.detectedVersions.push({ method: 'navigator.userAgent', version: uaMatch[1] });
+                results.targetVersion = uaMatch[1];
+            }
+
+            // Test 2: navigator.appVersion
+            const appVersion = navigator.appVersion;
+            document.getElementById('appVersion').textContent = appVersion;
+            const avMatch = appVersion.match(/Chrome\/(\d+)/);
+            if (avMatch) {
+                results.detectedVersions.push({ method: 'navigator.appVersion', version: avMatch[1] });
+            }
+
+            // Test 3: navigator.userAgentData
+            if (navigator.userAgentData) {
+                document.getElementById('userAgentData').innerHTML = `
+                    <strong>Exists:</strong> Yes<br>
+                    <strong>Platform:</strong> ${navigator.userAgentData.platform}<br>
+                    <strong>Mobile:</strong> ${navigator.userAgentData.mobile}
+                `;
+
+                // Test 4: Brands
+                if (navigator.userAgentData.brands) {
+                    const brandsHtml = navigator.userAgentData.brands.map(b => 
+                        `${b.brand}: ${b.version}`
+                    ).join('<br>');
+                    document.getElementById('brands').innerHTML = brandsHtml;
+                    
+                    const chromeBrand = navigator.userAgentData.brands.find(b => 
+                        b.brand.includes('Chrome') || b.brand.includes('Chromium')
+                    );
+                    if (chromeBrand) {
+                        results.detectedVersions.push({ 
+                            method: 'navigator.userAgentData.brands', 
+                            version: chromeBrand.version 
+                        });
+                    }
+                }
+
+                // Test 5: High Entropy Values
+                try {
+                    const highEntropy = await navigator.userAgentData.getHighEntropyValues([
+                        'architecture',
+                        'bitness',
+                        'brands',
+                        'fullVersionList',
+                        'mobile',
+                        'model',
+                        'platform',
+                        'platformVersion',
+                        'uaFullVersion',
+                        'wow64'
+                    ]);
+                    
+                    let heHtml = '<table style="width:100%">';
+                    for (let key in highEntropy) {
+                        if (key === 'brands' || key === 'fullVersionList') {
+                            heHtml += `<tr><td><strong>${key}:</strong></td><td>`;
+                            highEntropy[key].forEach(b => {
+                                heHtml += `${b.brand}: ${b.version}<br>`;
+                                if ((b.brand.includes('Chrome') || b.brand.includes('Chromium')) && key === 'fullVersionList') {
+                                    results.detectedVersions.push({ 
+                                        method: 'getHighEntropyValues.fullVersionList', 
+                                        version: b.version.split('.')[0]
+                                    });
+                                }
+                            });
+                            heHtml += '</td></tr>';
+                        } else {
+                            heHtml += `<tr><td><strong>${key}:</strong></td><td>${highEntropy[key]}</td></tr>`;
+                            if (key === 'uaFullVersion') {
+                                const vMatch = highEntropy[key].match(/^(\d+)/);
+                                if (vMatch) {
+                                    results.detectedVersions.push({ 
+                                        method: 'getHighEntropyValues.uaFullVersion', 
+                                        version: vMatch[1]
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    heHtml += '</table>';
+                    document.getElementById('highEntropy').innerHTML = heHtml;
+                } catch (e) {
+                    document.getElementById('highEntropy').innerHTML = `<span class="fail">Error: ${e.message}</span>`;
+                }
+            } else {
+                document.getElementById('userAgentData').innerHTML = '<span class="warning">Not supported in this browser</span>';
+                document.getElementById('brands').innerHTML = '<span class="warning">N/A</span>';
+                document.getElementById('highEntropy').innerHTML = '<span class="warning">N/A</span>';
+            }
+
+            // Test 7: Additional Properties
+            const additionalProps = {
+                'navigator.platform': navigator.platform,
+                'navigator.vendor': navigator.vendor,
+                'navigator.language': navigator.language,
+                'navigator.languages': navigator.languages.join(', '),
+                'navigator.hardwareConcurrency': navigator.hardwareConcurrency,
+                'navigator.deviceMemory': navigator.deviceMemory || 'N/A',
+                'navigator.maxTouchPoints': navigator.maxTouchPoints,
+                'navigator.webdriver': navigator.webdriver
+            };
+            
+            let propsHtml = '<table style="width:100%">';
+            for (let prop in additionalProps) {
+                propsHtml += `<tr><td><strong>${prop}:</strong></td><td>${additionalProps[prop]}</td></tr>`;
+            }
+            propsHtml += '</table>';
+            document.getElementById('additionalProps').innerHTML = propsHtml;
+
+            // Build version table
+            let tableHtml = '';
+            const targetVersion = results.targetVersion;
+            
+            results.detectedVersions.forEach(item => {
+                const match = item.version === targetVersion;
+                const statusClass = match ? 'pass' : 'fail';
+                const statusText = match ? '✓ PASS' : '✗ FAIL - VERSION MISMATCH!';
+                
+                if (!match) results.allMatch = false;
+                
+                tableHtml += `
+                    <tr>
+                        <td>${item.method}</td>
+                        <td><strong>${item.version}</strong></td>
+                        <td class="${statusClass}">${statusText}</td>
+                    </tr>
+                `;
+            });
+            document.getElementById('versionTable').innerHTML = tableHtml;
+
+            // Summary
+            const summaryDiv = document.getElementById('summaryContent');
+            if (results.allMatch && results.detectedVersions.length > 0) {
+                summaryDiv.innerHTML = `
+                    <h3 class="pass">✅ ALL TESTS PASSED!</h3>
+                    <p>All detection methods report consistent Chrome version: <strong>${targetVersion}</strong></p>
+                    <p>Your browser is successfully spoofing Chrome ${targetVersion}.</p>
+                `;
+            } else if (results.detectedVersions.length === 0) {
+                summaryDiv.innerHTML = `
+                    <h3 class="warning">⚠ NO VERSION DETECTED</h3>
+                    <p>Could not detect Chrome version from any method.</p>
+                `;
+            } else {
+                summaryDiv.innerHTML = `
+                    <h3 class="fail">❌ VERSION MISMATCH DETECTED!</h3>
+                    <p>Different detection methods are reporting different Chrome versions!</p>
+                    <p>Target Version (from User-Agent): <strong>${targetVersion}</strong></p>
+                    <p>This means websites can detect you are using Chrome ${Math.max(...results.detectedVersions.map(v => parseInt(v.version)))}.</p>
+                    <p><strong>Anti-detection is NOT working properly!</strong></p>
+                `;
+            }
+        }
+
+        // Run tests on page load
+        window.addEventListener('DOMContentLoaded', runTests);
+    </script>
+</body>
+</html>

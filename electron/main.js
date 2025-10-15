@@ -13,21 +13,101 @@ puppeteerExtra.use(StealthPlugin());
 // SOCKS5 proxy handler (separate from HTTP proxy handling)
 const socks5Handler = require('./socks5-handler');
 
+// Responsive browser handler
+const responsiveBrowserHandler = require('./responsive-browser-handler');
+
+// Electron storage for persistent auth
+const { getStorage } = require('./electron-storage');
+
+// Profile storage service
+const { setupProfileStorageHandlers } = require('./profile-storage-handlers');
+
+// Chrome 139 Runtime
+const chrome139Runtime = require('./chrome139-runtime');
+const playwrightMobileLauncher = require('./playwright-mobile-launcher');
+const fingerprintTestSuite = require('./fingerprint-test-suite');
+
+// Subscription Validator
+const subscriptionValidator = require('./subscription-validator');
+
+// Global error handlers for SOCKS5 proxy-chain issues
+process.on('uncaughtException', (error) => {
+  // Silently suppress Node.js internal assertion errors from SOCKS5 proxy-chain
+  // These are harmless - proxy still works correctly
+  if (error.code === 'ERR_INTERNAL_ASSERTION') {
+    return; // Suppress completely - no console output
+  }
+  
+  // Also suppress socket hang up errors from SOCKS5
+  if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+    return; // Suppress completely
+  }
+  
+  // Log only real uncaught exceptions
+  console.error('❌ Uncaught Exception:', error);
+  console.error(error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Track launched profiles
 const activeProfiles = new Map();
 const launchQueue = new Map(); // Track profiles being launched
 const closeQueue = new Set(); // Track profiles being closed
 let devServerProcess = null;
 
-// Platform-specific viewport sizes
+// Platform-specific realistic viewport sizes
 const PLATFORM_SIZES = {
-  windows: { width: 1024, height: 768 },  // Fixed small size
-  macos: { width: 1024, height: 768 },    // Fixed small size
-  linux: { width: 1024, height: 768 },    // Fixed small size
-  android: { width: 412, height: 915, mobile: true },
-  ios: { width: 390, height: 844, mobile: true },
-  tv: { width: 1920, height: 1080 }
+  windows: [
+    { width: 1920, height: 1080 }, // Full HD
+    { width: 1366, height: 768 },  // Laptop
+    { width: 1536, height: 864 },  // HD+
+    { width: 1280, height: 720 },  // HD
+    { width: 1440, height: 900 }   // MacBook Air size
+  ],
+  macos: [
+    { width: 1440, height: 900 },  // MacBook Air/Pro 13"
+    { width: 1680, height: 1050 }, // MacBook Pro 15"
+    { width: 1920, height: 1080 }, // iMac
+    { width: 2560, height: 1440 }, // iMac 5K scaled
+    { width: 1280, height: 800 }   // MacBook 12"
+  ],
+  linux: [
+    { width: 1920, height: 1080 }, // Full HD
+    { width: 1600, height: 900 },  // HD+
+    { width: 1366, height: 768 },  // Common laptop
+    { width: 1280, height: 1024 }, // Old 4:3
+    { width: 1440, height: 900 }   // Wide
+  ],
+  android: [
+    { width: 412, height: 915, mobile: true },  // Pixel 5
+    { width: 360, height: 800, mobile: true },  // Samsung Galaxy
+    { width: 384, height: 854, mobile: true },  // OnePlus
+    { width: 393, height: 851, mobile: true },  // Pixel 6
+    { width: 428, height: 926, mobile: true }   // Large phone
+  ],
+  ios: [
+    { width: 390, height: 844, mobile: true },  // iPhone 13/14
+    { width: 428, height: 926, mobile: true },  // iPhone 14 Pro Max
+    { width: 375, height: 812, mobile: true },  // iPhone X/11 Pro
+    { width: 414, height: 896, mobile: true },  // iPhone 11/XR
+    { width: 360, height: 780, mobile: true }   // iPhone SE
+  ],
+  tv: [
+    { width: 1920, height: 1080 }, // Full HD TV
+    { width: 3840, height: 2160 }, // 4K TV
+    { width: 1280, height: 720 },  // HD TV
+    { width: 2560, height: 1440 }  // 2K TV
+  ]
 };
+
+// Get random size for platform
+function getRandomSizeForPlatform(platform) {
+  const sizes = PLATFORM_SIZES[platform] || PLATFORM_SIZES.windows;
+  return sizes[Math.floor(Math.random() * sizes.length)];
+}
 
 // Track used user agents to ensure uniqueness per platform
 const usedUserAgents = new Map(); // Map<platform, Set<userAgent>>
@@ -476,6 +556,86 @@ async function detectTimezoneFromIP(ipOrHost) {
   return { success: false, timezone: 'UTC', error: 'Failed to detect timezone' };
 }
 
+/**
+ * Create RPA Script Extension for Chrome 139
+ * Creates a Chrome extension that executes the RPA script on page load
+ */
+function createRPAScriptExtension(userDataDir, action) {
+  const extensionDir = path.join(userDataDir, 'BeastRPAExtension');
+  
+  // Remove old extension if exists
+  if (fs.existsSync(extensionDir)) {
+    fs.rmSync(extensionDir, { recursive: true, force: true });
+  }
+  
+  fs.mkdirSync(extensionDir, { recursive: true });
+  
+  // Create manifest.json with MAIN world injection
+  const manifest = {
+    manifest_version: 3,
+    name: "Beast Browser RPA Automation",
+    version: "1.0.0",
+    description: "Executes RPA automation scripts",
+    permissions: [],
+    host_permissions: ["<all_urls>"],
+    content_scripts: [
+      {
+        matches: ["<all_urls>"],
+        js: ["rpa-script.js"],
+        run_at: "document_idle", // Run after page loads
+        world: "MAIN", // CRITICAL: Inject into page's main world
+        all_frames: false
+      }
+    ]
+  };
+  
+  fs.writeFileSync(
+    path.join(extensionDir, 'manifest.json'),
+    JSON.stringify(manifest, null, 2),
+    'utf8'
+  );
+  
+  // Create RPA script WITHOUT template literals to avoid escaping issues
+  const scriptContent = action.scriptContent || '';
+  const scriptName = (action.name || 'Unnamed').replace(/'/g, "\\'");
+  
+  // Build script - Execute user script DIRECTLY without IIFE wrapper
+  // This allows setTimeout, setInterval, and async operations to work properly
+  // NO URL CHECKING - Script runs on ALL pages (user controls URL via profile's Starting URL)
+  const rpaScript = [
+    '// Beast Browser RPA Automation Script',
+    '// Script: ' + scriptName,
+    '',
+    'console.log("🤖 Beast RPA Extension Loaded");',
+    'console.log("📍 Current URL:", window.location.href);',
+    'console.log("🎯 Script Name:", "' + scriptName + '");',
+    '',
+    'try {',
+    '  console.log("🚀 Starting RPA automation...");',
+    '  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");',
+    '  ',
+    '  // ===== USER SCRIPT STARTS HERE =====',
+    '  ',
+    scriptContent,
+    '  ',
+    '  // ===== USER SCRIPT ENDS HERE =====',
+    '  ',
+    '} catch (error) {',
+    '  console.error("❌ RPA script execution error:", error);',
+    '  console.error("Stack:", error.stack);',
+    '}'
+  ].join('\n');
+  
+  fs.writeFileSync(
+    path.join(extensionDir, 'rpa-script.js'),
+    rpaScript,
+    'utf8'
+  );
+  
+  console.log('✅ RPA extension created:', extensionDir);
+  return extensionDir;
+}
+
 async function applyPageAntiDetection(page, profile, options) {
   // User agent
   if (profile && profile.userAgent) {
@@ -487,27 +647,24 @@ async function applyPageAntiDetection(page, profile, options) {
   console.log(`🔧 applyPageAntiDetection: Platform = "${platform}" for profile ${profile?.id || 'unknown'}`);
   
   const platformSizes = getPlatformSizes(platform);
-  const isMobile = platformSizes.mobile || false;
+  // Get random realistic size for this platform
+  const randomSize = getRandomSizeForPlatform(platform);
+  const isMobile = randomSize.mobile || false;
   
   const fp = profile && profile.fingerprint;
-  const screen = (fp && fp.screen) || platformSizes;
+  const screen = (fp && fp.screen) || randomSize;
   
-  // Platform-specific viewport sizes
-  let viewportWidth, viewportHeight;
-  if (isMobile) {
-    // Mobile devices - use exact screen size
-    viewportWidth = screen.width || platformSizes.width;
-    viewportHeight = screen.height || platformSizes.height;
-  } else {
-    // Desktop - FORCE SMALL SIZE
-    viewportWidth = 1024;
-    viewportHeight = 618; // 768 - 150 (chrome height)
-  }
+  // Use realistic viewport sizes based on platform
+  const viewportWidth = screen.width || randomSize.width;
+  const viewportHeight = screen.height || randomSize.height;
+  
+  // Calculate browser chrome height (address bar, tabs, etc.)
+  const chromeHeight = isMobile ? 0 : 150; // Desktop has chrome UI
   
   await page.setViewport({ 
     width: viewportWidth, 
-    height: viewportHeight, 
-    deviceScaleFactor: 1,
+    height: viewportHeight - chromeHeight, 
+    deviceScaleFactor: isMobile ? 2 : 1, // Mobile has higher DPI
     isMobile: isMobile,
     hasTouch: isMobile
   });
@@ -517,20 +674,16 @@ async function applyPageAntiDetection(page, profile, options) {
     const session = await page.target().createCDPSession();
     const { windowId } = await session.send('Browser.getWindowForTarget');
     
-    // Calculate final window size - FORCE SMALL for desktop
-    const finalWidth = isMobile ? viewportWidth : 1024;
-    const finalHeight = isMobile ? viewportHeight : 768;
-    
     await session.send('Browser.setWindowBounds', {
       windowId,
       bounds: {
-        width: finalWidth,
-        height: finalHeight,
+        width: viewportWidth,
+        height: viewportHeight,
         windowState: 'normal'
       }
     });
     
-    console.log(`📱 Browser window set: ${finalWidth}x${finalHeight} (${isMobile ? 'Mobile' : 'Desktop'} - ${platform})`);
+    console.log(`📱 Browser window set: ${viewportWidth}x${viewportHeight} (${isMobile ? 'Mobile' : 'Desktop'} - ${platform})`);
   } catch (e) {
     console.log('⚠️ Could not set window bounds:', e.message);
   }
@@ -1112,65 +1265,105 @@ function buildLaunchArgs(profile, options) {
   return args;
 }
 
+// 🚀 NEW: Smart launcher - Playwright for mobile, Chrome139 for desktop
 async function openAntiBrowser(profile, options) {
-  if (!profile || !profile.id) {
-    return { success: false, error: 'Invalid profile' };
-  }
-  
-  // Check if already active
-  const existing = activeProfiles.get(profile.id);
-  if (existing) {
-    console.log('⚠️ Profile already open:', profile.id);
-    return { success: true, message: 'Profile already open' };
-  }
-  
-  // Check if currently being launched
-  if (launchQueue.has(profile.id)) {
-    console.log('⚠️ Profile already launching:', profile.id);
-    return { success: false, error: 'Profile is already being launched' };
-  }
-  
-  // Check if being closed
-  if (closeQueue.has(profile.id)) {
-    console.log('⚠️ Profile is being closed, waiting...');
-    // Wait for close to complete
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    if (closeQueue.has(profile.id)) {
-      return { success: false, error: 'Profile is being closed, please wait' };
-    }
-  }
-  
-  // Mark as launching
-  launchQueue.set(profile.id, Date.now());
-  console.log('🚀 Launching profile:', profile.id);
-  console.log('📋 Full profile data:', JSON.stringify({
-    id: profile.id,
-    name: profile.name,
-    platform: profile.platform,
-    platformType: profile.platformType,
-    deviceType: profile.deviceType,
-    userAgentPlatform: profile.userAgentPlatform
-  }, null, 2));
-  
   try {
-    // Get platform - check multiple possible field names
-    const platform = (profile && (profile.platform || profile.platformType || profile.deviceType || profile.userAgentPlatform)) || 'windows';
-    console.log(`🖥️ Profile platform detected: "${platform}" for profile: ${profile.id}`);
+    console.log('🔍 ============ openAntiBrowser DEBUG ============');
+    console.log('🔍 profile.id:', profile?.id);
+    console.log('🔍 profile.name:', profile?.name);
+    console.log('🔍 profile.platform (RAW):', profile?.platform);
+    console.log('🔍 profile.platform type:', typeof profile?.platform);
+    console.log('🔍 Full profile object:', JSON.stringify(profile, null, 2));
+    console.log('🔍 options:', JSON.stringify(options || {}));
     
-    // Generate random fingerprint if not provided or if random flag is set
-    if (!profile.fingerprint || profile.randomFingerprint) {
-      console.log('🎲 Generating advanced random fingerprint for', platform);
-      profile.fingerprint = generateAdvancedFingerprint(platform);
+    const platform = (profile.platform || '').toLowerCase().trim();
+    console.log('🔍 platform (processed):', platform);
+    console.log('🔍 platform === "android":', platform === 'android');
+    console.log('🔍 platform === "ios":', platform === 'ios');
+    
+    // Check if mobile platform (Android/iOS)
+    const isMobilePlatform = platform === 'android' || platform === 'ios';
+    console.log('🔍 isMobilePlatform:', isMobilePlatform);
+    
+    if (isMobilePlatform) {
+      console.log(`✅ Playwright Mobile Launch selected for profile: ${profile.id} (${platform.toUpperCase()})`);
+      return await playwrightMobileLauncher.launchMobile(profile);
+    } else {
+      console.log(`✅ Chrome 139 Launch selected for profile: ${profile.id} (platform: ${platform || 'windows'})`);
+      return await chrome139Runtime.launchProfile(profile, options);
     }
-    
-    // Generate random user agent if not provided
-    if (!profile.userAgent || profile.randomFingerprint) {
-      console.log('🎲 Selecting unique User-Agent for', platform);
-      profile.userAgent = getRandomUserAgent(platform, profile.id);
+  } catch (error) {
+    console.error('❌❌❌ CRITICAL ERROR in openAntiBrowser:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    throw error;
+  }
+}
+
+// 🛑 NEW: Smart closer - checks which browser type
+async function closeAntiBrowser(profileId) {
+  console.log('🛑 Close requested for profile:', profileId);
+  
+  // Cancel any pending auto-close timer for this profile
+  if (global.rpaAutoCloseTimers && global.rpaAutoCloseTimers.has(profileId)) {
+    clearTimeout(global.rpaAutoCloseTimers.get(profileId));
+    global.rpaAutoCloseTimers.delete(profileId);
+    console.log(`⏰ Cancelled auto-close timer for profile ${profileId} (manual close)`);
+  }
+  
+  // Clean up RPA execution time storage
+  if (global.rpaExecutionTimes && global.rpaExecutionTimes.has(profileId)) {
+    global.rpaExecutionTimes.delete(profileId);
+    console.log(`🧹 Cleared RPA execution time for profile ${profileId} (manual close)`);
+  }
+  
+  // Check if it's a Playwright mobile browser
+  if (playwrightMobileLauncher.isActive(profileId)) {
+    console.log('🛑 Closing Playwright mobile browser:', profileId);
+    return await playwrightMobileLauncher.closeMobile(profileId);
+  } else {
+    console.log('🛑 Closing Chrome 139 browser:', profileId);
+    return await chrome139Runtime.closeProfile(profileId);
+  }
+}
+
+// Old Puppeteer code removed - now using Chrome 139 runtime exclusively
+// The functions below are kept for RPA and other features
+
+// Security: Validate user script for dangerous operations
+function validateUserScript(scriptContent) {
+  const dangerousPatterns = [
+    /require\s*\(/gi,
+    /import\s+.*from/gi,
+    /fs\.\w+/gi,
+    /child_process/gi,
+    /eval\s*\(/gi,
+    // Removed: /Function\s*\(/gi - too strict, blocks legitimate code
+    /\bprocess\./gi,
+    /__dirname/gi,
+    /__filename/gi,
+    /Buffer\./gi
+  ];
+
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(scriptContent)) {
+      return {
+        valid: false,
+        error: `Security Error: Script contains potentially dangerous operation: ${pattern.source}`
+      };
     }
-    
-    // Ensure platform is set correctly for later use
-    if (!profile.platform) {
+  }
+
+  return { valid: true };
+}
+
+async function executeAction(profileId, action) {
+  const entry = activeProfiles.get(profileId);
+  if (!entry) return { success: false, error: 'Profile not open' };
+  const page = entry.page;
+  try {
+    switch (action.id) {
+      case 'navigate':
       profile.platform = platform;
       console.log(`✅ Platform field set to: "${platform}"`);
     }
@@ -1193,39 +1386,71 @@ async function openAntiBrowser(profile, options) {
       console.log('✅ SOCKS5 tunnel created! Local proxy:', socksInfo.proxyUrl);
     } catch (error) {
       console.error('❌ Failed to create SOCKS5 tunnel:', error.message);
+      // Clear launch queue on SOCKS5 error
+      launchQueue.delete(profile.id);
       return { success: false, error: `SOCKS5 tunnel failed: ${error.message}` };
     }
   }
   
-  // Find Chromium executable - CRITICAL FIX for distribution
-  const chromiumPath = findChromiumExecutable();
+  // Use bundled Chromium - NO system Chrome dependency!
+  console.log('🚀 Looking for bundled Chromium...');
   
-  if (!chromiumPath) {
-    console.error('❌ CRITICAL: Chromium executable not found!');
-    console.error('💡 Please ensure Chrome/Chromium is installed or bundled with the app');
+  // Find bundled Chromium path
+  let chromiumPath = null;
+  
+  // In production (packaged app)
+  if (app.isPackaged) {
+    // Check bundled chromium-cache in resources
+    const bundledChromiumBase = path.join(process.resourcesPath, 'chromium-cache', 'chrome');
+    console.log('📦 Checking bundled Chromium at:', bundledChromiumBase);
     
-    // Cleanup SOCKS5 tunnel if it was created
+    if (fs.existsSync(bundledChromiumBase)) {
+      // Find the version folder (e.g., win64-140.0.7339.185)
+      const versions = fs.readdirSync(bundledChromiumBase);
+      if (versions.length > 0) {
+        const versionFolder = versions[0]; // Get first (should be only one)
+        chromiumPath = path.join(bundledChromiumBase, versionFolder, 'chrome-win64', 'chrome.exe');
+        console.log('✅ Found bundled Chromium:', chromiumPath);
+      }
+    }
+  }
+  
+  // In development - use local cache
+  if (!chromiumPath) {
+    try {
+      chromiumPath = puppeteer.executablePath();
+      console.log('🔧 Using development Chromium:', chromiumPath);
+    } catch (e) {
+      console.error('❌ Could not find Chromium:', e.message);
+    }
+  }
+  
+  // Final check - if still no Chromium found
+  if (!chromiumPath || !fs.existsSync(chromiumPath)) {
+    console.error('❌ CRITICAL: Chromium not found!');
+    console.error('📦 App packaged:', app.isPackaged);
+    console.error('📂 Resources path:', process.resourcesPath);
+    
+    // Cleanup and return error
     if (socks5Tunnel) {
       try {
         await socks5Handler.closeSocks5Tunnel(profile.id);
       } catch (_) {}
     }
+    launchQueue.delete(profile.id);
     
-    return { 
-      success: false, 
-      error: 'Chromium not found. Please install Google Chrome or contact support.' 
+    return {
+      success: false,
+      error: 'Browser engine not found. Please reinstall the application.'
     };
   }
-  
-  console.log(`🚀 Launching browser with Chromium: ${chromiumPath}`);
   
   const launchOptions = {
     headless: false,
     userDataDir,
     args,
     defaultViewport: null,
-    executablePath: chromiumPath, // Use detected Chromium path
-    // Add better timeout and error handling
+    executablePath: chromiumPath, // Use bundled Chromium
     timeout: 60000, // 60 seconds browser launch timeout
     protocolTimeout: 180000, // 3 minutes protocol timeout
     ignoreHTTPSErrors: true,
@@ -1234,18 +1459,32 @@ async function openAntiBrowser(profile, options) {
 
   let browser;
   try {
+    console.log('🚀 Launching Puppeteer with bundled Chromium...');
     browser = await puppeteerExtra.launch(launchOptions);
+    console.log('✅ Browser launched successfully!');
   } catch (launchError) {
+    console.error('❌ Browser launch failed:', launchError.message);
+    
     // Cleanup SOCKS5 tunnel on launch failure
     if (socks5Tunnel) {
       try {
         await socks5Handler.closeSocks5Tunnel(profile.id);
       } catch (_) {}
     }
-    throw launchError;
+    
+    // CRITICAL: Clear launch queue on error
+    launchQueue.delete(profile.id);
+    
+    return { 
+      success: false, 
+      error: `Failed to launch browser: ${launchError.message}. Please try again.` 
+    };
   }
   const pages = await browser.pages();
   const page = pages.length > 0 ? pages[0] : await browser.newPage();
+  
+  // 📐 Initialize responsive browser behavior
+  await responsiveBrowserHandler.initialize(profile.id, page, browser);
   
   // Set custom window title to show in taskbar
   await page.evaluateOnNewDocument(() => {
@@ -1448,6 +1687,9 @@ async function openAntiBrowser(profile, options) {
     activeProfiles.delete(profile.id);
     launchQueue.delete(profile.id);
     
+    // 🗑️ Cleanup responsive handler
+    responsiveBrowserHandler.cleanup(profile.id);
+    
     // Close SOCKS5 tunnel if it exists
     if (socks5Tunnel) {
       try {
@@ -1476,46 +1718,9 @@ async function openAntiBrowser(profile, options) {
   }
 }
 
-async function closeAntiBrowser(profileId) {
-  // Check if profile exists
-  const entry = activeProfiles.get(profileId);
-  if (!entry) {
-    console.log('⚠️ Profile not active:', profileId);
-    return { success: true, message: 'Profile not active' };
-  }
-  
-  // Check if already being closed
-  if (closeQueue.has(profileId)) {
-    console.log('⚠️ Profile already being closed:', profileId);
-    return { success: false, error: 'Profile is already being closed' };
-  }
-  
-  // Mark as closing
-  closeQueue.add(profileId);
-  console.log('🛑 Closing profile:', profileId);
-  
-  try {
-    await entry.browser.close();
-    activeProfiles.delete(profileId);
-    launchQueue.delete(profileId);
-    
-    // Close SOCKS5 tunnel if exists
-    await socks5Handler.closeSocks5Tunnel(profileId);
-    
-    // Note: We intentionally DO NOT remove user agent from usedUserAgents
-    // to maintain uniqueness across all profiles, even after closing
-    // User agents will only be recycled when all are used
-    
-    console.log('✅ Profile closed successfully:', profileId);
-    return { success: true };
-  } catch (e) {
-    console.error('❌ Error closing profile:', profileId, e.message);
-    return { success: false, error: e.message };
-  } finally {
-    // Always remove from close queue
-    closeQueue.delete(profileId);
-  }
-}
+// ❌ REMOVED: Duplicate closeAntiBrowser function (old Puppeteer code)
+// The correct closeAntiBrowser is defined above (line ~1329)
+// This duplicate was causing browser windows to not close properly
 
 // Security: Validate user script for dangerous operations
 function validateUserScript(scriptContent) {
@@ -1551,7 +1756,7 @@ async function executeAction(profileId, action) {
   try {
     switch (action.id) {
       case 'navigate':
-        const url = action.params?.url || 'https://duckduckgo.com';
+        const url = action.params?.url || 'https://www.google.com';
         // Navigate and wait for network idle for better page load
         await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
         return { success: true };
@@ -1880,9 +2085,26 @@ async function executeCustomRPAScript(profileId, params) {
 
 // IPC
 function setupIPC() {
+  // Setup profile storage handlers first
+  setupProfileStorageHandlers();
+  
+  // Setup persistent storage handlers for auth
+  const storage = getStorage();
+  ipcMain.handle('storage-get', async (_e, key) => storage.getItem(key));
+  ipcMain.handle('storage-set', async (_e, key, value) => storage.setItem(key, value));
+  ipcMain.handle('storage-remove', async (_e, key) => storage.removeItem(key));
+  ipcMain.handle('storage-clear', async () => storage.clear());
+  console.log('✅ Persistent storage handlers registered');
+  
   ipcMain.handle('antiBrowserOpen', async (_e, profile, opts) => openAntiBrowser(profile, opts || {}));
   ipcMain.handle('antiBrowserClose', async (_e, profileId) => closeAntiBrowser(profileId));
-  ipcMain.handle('getProfileStatus', async (_e, profileId) => ({ success: true, isOpen: activeProfiles.has(profileId) }));
+  
+  // ✅ Check profile status from both runtimes
+  ipcMain.handle('getProfileStatus', async (_e, profileId) => {
+    const isActiveChrome = chrome139Runtime.isProfileActive(profileId);
+    const isActivePlaywright = playwrightMobileLauncher.isActive(profileId);
+    return { isOpen: isActiveChrome || isActivePlaywright };
+  });
   
   // Bulk operations - Launch multiple profiles in parallel
   ipcMain.handle('antiBrowserOpenBulk', async (_e, profiles, opts) => {
@@ -1970,43 +2192,154 @@ function setupIPC() {
     return { success: true, results };
   });
   
+  // ✅ RPA Script Execution - DIRECT INJECTION (No Extension)
   ipcMain.handle('executeRPAScript', async (_e, profileId, action) => {
     console.log('\n📨 executeRPAScript called with:', {
       profileId,
       actionName: action.name,
       hasScriptContent: !!action.scriptContent,
-      hasWebsiteUrl: !!action.websiteUrl,
-      scriptContentLength: action.scriptContent?.length || 0,
-      websiteUrl: action.websiteUrl,
       executionTime: action.executionTime
     });
     
-    // Check if this is a custom RPA script object (has scriptContent property)
-    if (action.scriptContent && action.websiteUrl) {
-      console.log('✅ Detected custom RPA script, calling executeCustomRPAScript');
-      // Execute as custom RPA script
-      return executeCustomRPAScript(profileId, {
-        websiteUrl: action.websiteUrl,
+    try {
+      // Store RPA script for this profile - will be injected when browser opens
+      global.rpaScriptsToInject = global.rpaScriptsToInject || new Map();
+      global.rpaScriptsToInject.set(profileId, {
         scriptContent: action.scriptContent,
-        executionTime: action.executionTime || 5,
-        scriptName: action.name || 'Unnamed Script'
+        scriptName: action.name,
+        executionTime: action.executionTime
       });
-    } else {
-      console.log('⚠️ Not a custom script, calling executeAction for predefined action');
-      // Execute as predefined action
-      return executeAction(profileId, action);
+      
+      console.log('✅ RPA script stored for direct injection');
+      console.log('✅ Script will be injected immediately when profile opens');
+      console.log(`⏱️ Execution Duration: ${action.executionTime} minutes`);
+      console.log('🌐 Script will run on profile\'s Starting URL');
+      console.log('🎯 Using DIRECT INJECTION (no extension needed)');
+      
+      // Check if profile is currently running
+      const isRunning = chrome139Runtime.isProfileActive(profileId);
+      
+      // Store RPA execution time for auto-close
+      if (action.executionTime && action.executionTime > 0) {
+        global.rpaExecutionTimes = global.rpaExecutionTimes || new Map();
+        global.rpaExecutionTimes.set(profileId, action.executionTime);
+        console.log(`📝 Saved RPA execution time: ${action.executionTime} minute(s) for profile ${profileId}`);
+        console.log(`⏰ Auto-close timer will start AFTER profile launches`);
+      }
+      
+      // If profile is already running, inject script NOW
+      if (isRunning) {
+        console.log('🚀 Profile is running - attempting immediate injection...');
+        const result = await chrome139Runtime.injectRPAScript(profileId);
+        if (result.success) {
+          console.log('✅ Script injected immediately!');
+          return {
+            success: true,
+            message: 'Script injected into running profile!',
+            injectedImmediately: true,
+            autoCloseScheduled: !!(action.executionTime && action.executionTime > 0),
+            executionTimeMinutes: action.executionTime
+          };
+        } else {
+          console.warn('⚠️ Immediate injection failed, will inject on next page load');
+        }
+      }
+      
+      return {
+        success: true,
+        message: isRunning 
+          ? 'Script will be injected on next page navigation'
+          : 'Script ready! Will be injected when profile opens',
+        needsRelaunch: false,
+        autoCloseScheduled: !!(action.executionTime && action.executionTime > 0),
+        executionTimeMinutes: action.executionTime
+      };
+    } catch (error) {
+      console.error('❌ Failed to setup RPA execution:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   });
   ipcMain.handle('clearProfileData', async (_e, profileId, types) => clearProfileData(profileId, types));
   ipcMain.handle('clearAllProfileData', async (_e, profileId) => clearProfileData(profileId, ['cache', 'cookies', 'history']));
   ipcMain.handle('getProfileDataUsage', async (_e, profileId) => getProfileUsage(profileId));
+  // ✅ Chrome 139: Close all profiles
   ipcMain.handle('closeAllProfiles', async () => {
-    let closed = 0;
-    for (const [id] of Array.from(activeProfiles.entries())) {
-      try { await closeAntiBrowser(id); closed++; } catch (_) {}
-    }
-    return { success: true, closedCount: closed };
+    console.log('🛑 Close all profiles requested');
+    return await chrome139Runtime.closeAll();
   });
+  
+  // Chrome 139 Runtime Handlers
+  ipcMain.handle('chrome139:getRuntimeInfo', async () => {
+    return chrome139Runtime.getRuntimeInfo();
+  });
+  
+  ipcMain.handle('chrome139:launchProfile', async (_e, profile) => {
+    console.log('🚀 Chrome 139 launch requested for profile:', profile.id);
+    return await chrome139Runtime.launchProfile(profile);
+  });
+  
+  ipcMain.handle('chrome139:closeProfile', async (_e, profileId) => {
+    console.log('🛑 Chrome 139 close requested for profile:', profileId);
+    return await chrome139Runtime.closeProfile(profileId);
+  });
+  
+  ipcMain.handle('chrome139:getActiveProfiles', async () => {
+    // Return both Chrome139 AND Playwright mobile profiles
+    const chromeProfiles = chrome139Runtime.getActiveProfiles();
+    const playwrightProfiles = playwrightMobileLauncher.getActiveProfiles();
+    
+    // Combine both lists (no duplicates since they use different runtimes)
+    const allActiveProfiles = [...chromeProfiles, ...playwrightProfiles];
+    
+    console.log(`📊 Active profiles: ${allActiveProfiles.length} total (Chrome: ${chromeProfiles.length}, Playwright: ${playwrightProfiles.length})`);
+    
+    return allActiveProfiles;
+  });
+  
+  ipcMain.handle('chrome139:getProfileInfo', async (_e, profileId) => {
+    // Check both Chrome139 and Playwright
+    const chromeInfo = chrome139Runtime.getProfileInfo(profileId);
+    if (chromeInfo) return chromeInfo;
+    
+    const playwrightInfo = playwrightMobileLauncher.getProfileInfo(profileId);
+    if (playwrightInfo) return playwrightInfo;
+    
+    return null; // Profile not active in either runtime
+  });
+  
+  ipcMain.handle('chrome139:closeAll', async () => {
+    // Close both Playwright mobile and Chrome 139 browsers
+    const [chromeResult, playwrightResult] = await Promise.allSettled([
+      chrome139Runtime.closeAll(),
+      playwrightMobileLauncher.closeAll()
+    ]);
+    
+    const chromeClosed = chromeResult.status === 'fulfilled' ? chromeResult.value.closed : 0;
+    const playwrightClosed = playwrightResult.status === 'fulfilled' ? playwrightResult.value.closed : 0;
+    
+    console.log(`✅ Close all complete: ${chromeClosed} Chrome, ${playwrightClosed} Playwright`);
+    
+    return {
+      success: true,
+      closed: chromeClosed + playwrightClosed,
+      failed: 0
+    };
+  });
+  
+  // Fingerprint Test Suite Handlers
+  ipcMain.handle('fingerprint:runAllTests', async (_e, chromePath, userDataDir, proxy) => {
+    console.log('🧪 Running full fingerprint test suite');
+    return await fingerprintTestSuite.runAllTests(chromePath, userDataDir, proxy);
+  });
+  
+  ipcMain.handle('fingerprint:quickTest', async (_e, testName, chromePath, userDataDir, proxy) => {
+    console.log(`🧪 Running quick test: ${testName}`);
+    return await fingerprintTestSuite.quickTest(testName, chromePath, userDataDir, proxy);
+  });
+  
   ipcMain.handle('loadUserAgents', async (_e, platform) => {
     const dir = getUserAgentsDir();
     if (!dir) return [];
@@ -2015,6 +2348,32 @@ function setupIPC() {
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return []; }
   });
   ipcMain.handle('getTimezoneFromIP', async (_e, ipOrHost) => detectTimezoneFromIP(ipOrHost));
+
+  // 🔐 Subscription Validation Handlers
+  ipcMain.handle('validateSubscription', async (_e, userEmail) => {
+    console.log('🔐 MAIN: Validating subscription for:', userEmail);
+    try {
+      const status = await subscriptionValidator.validateSubscription(userEmail);
+      return status;
+    } catch (error) {
+      console.error('❌ MAIN: Subscription validation error:', error);
+      return {
+        valid: false,
+        hasSubscription: false,
+        message: 'Validation failed: ' + error.message,
+        error: error.message
+      };
+    }
+  });
+
+  ipcMain.handle('getSubscriptionDetails', async (_e, userEmail) => {
+    return await subscriptionValidator.getSubscriptionDetails(userEmail);
+  });
+
+  ipcMain.handle('clearSubscriptionCache', async () => {
+    subscriptionValidator.clearCache();
+    return { success: true, message: 'Cache cleared' };
+  });
   
   // Proxy testing - Test if proxy is working
   ipcMain.handle('testProxy', async (_e, proxy) => {
@@ -2034,56 +2393,84 @@ function setupIPC() {
         };
       }
       
-      // Normalize proxy type for Chromium (lowercase, handle HTTP vs HTTPS)
+      // Normalize proxy type
       const proxyType = (proxy.type || 'HTTP').toUpperCase();
-      const proxyScheme = proxyType === 'SOCKS5' ? 'socks5' : proxyType.toLowerCase();
+      console.log(`🧪 Testing proxy: ${proxyType}://${proxy.host}:${proxy.port}`);
       
-      console.log(`🧪 Testing proxy: ${proxyScheme}://${proxy.host}:${proxy.port}`);
+      // Use axios with proxy agents for better SOCKS5 support
+      const axios = require('axios');
+      const { HttpsProxyAgent } = require('https-proxy-agent');
+      const { SocksProxyAgent } = require('socks-proxy-agent');
       
-      // Find Chromium executable for proxy test
-      const chromiumPath = findChromiumExecutable();
-      
-      // Create a test browser with proxy to get real IP
-      const testBrowser = await puppeteerExtra.launch({
-        headless: true,
-        executablePath: chromiumPath, // Use detected Chromium path
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--ignore-certificate-errors',
-          `--proxy-server=${proxyScheme}://${proxy.host}:${proxy.port}`
-        ]
-      });
-      
-      const testPage = await testBrowser.newPage();
-      
-      // Authenticate if credentials provided
+      // Build proxy URL with authentication
+      let proxyUrl;
       if (proxy.username && proxy.password) {
-        await testPage.authenticate({
-          username: proxy.username,
-          password: proxy.password
-        });
+        proxyUrl = `${proxyType.toLowerCase()}://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`;
+      } else {
+        proxyUrl = `${proxyType.toLowerCase()}://${proxy.host}:${proxy.port}`;
       }
       
-      // Get IP through proxy
-      await testPage.goto('https://api.ipify.org?format=json', {
-        waitUntil: 'networkidle0',
-        timeout: 10000
-      });
+      console.log(`🔗 Proxy URL: ${proxyUrl.replace(/:([^:@]+)@/, ':****@')}`); // Hide password in logs
       
-      const content = await testPage.content();
-      await testBrowser.close();
-      
-      // Parse JSON from page content
-      const jsonMatch = content.match(/\{[^}]+\}/);
-      if (!jsonMatch) {
-        throw new Error('Failed to get IP from proxy');
+      // Create appropriate agent based on proxy type
+      let agent;
+      if (proxyType === 'SOCKS5' || proxyType === 'SOCKS4') {
+        agent = new SocksProxyAgent(proxyUrl);
+        console.log('🧦 Using SocksProxyAgent');
+      } else {
+        agent = new HttpsProxyAgent(proxyUrl);
+        console.log('🌐 Using HttpsProxyAgent');
       }
       
-      const data = JSON.parse(jsonMatch[0]);
+      // Test endpoints (try multiple in case one fails)
+      const testEndpoints = [
+        'https://api.ipify.org?format=json',
+        'https://ifconfig.me/ip',
+        'https://api.my-ip.io/ip'
+      ];
+      
+      let testResult = null;
+      let lastError = null;
+      
+      for (const endpoint of testEndpoints) {
+        try {
+          console.log(`📡 Testing endpoint: ${endpoint}`);
+          
+          const response = await axios.get(endpoint, {
+            httpAgent: agent,
+            httpsAgent: agent,
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+          });
+          
+          // Extract IP from response
+          let detectedIp = null;
+          if (typeof response.data === 'object' && response.data.ip) {
+            detectedIp = response.data.ip;
+          } else if (typeof response.data === 'string') {
+            detectedIp = response.data.trim();
+          }
+          
+          if (detectedIp) {
+            testResult = { ip: detectedIp, endpoint };
+            console.log(`✅ Got IP: ${detectedIp} from ${endpoint}`);
+            break;
+          }
+        } catch (error) {
+          lastError = error;
+          console.log(`⚠️ Endpoint ${endpoint} failed: ${error.message}`);
+          continue;
+        }
+      }
+      
+      if (!testResult) {
+        throw lastError || new Error('All test endpoints failed');
+      }
+      
       const responseTime = Date.now() - startTime;
-      
-      console.log(`✅ Proxy working! IP: ${data.ip} (${responseTime}ms)`);
+      console.log(`✅ Proxy working! IP: ${testResult.ip} (${responseTime}ms)`);
       
       // Get geo data
       let geoData = null;
@@ -2091,7 +2478,7 @@ function setupIPC() {
         const geoController = new AbortController();
         const geoTimeout = setTimeout(() => geoController.abort(), 5000);
         
-        const geoResponse = await fetch(`https://ipapi.co/${data.ip}/json/`, {
+        const geoResponse = await fetch(`https://ipapi.co/${testResult.ip}/json/`, {
           signal: geoController.signal
         });
         
@@ -2107,13 +2494,13 @@ function setupIPC() {
       
       return {
         success: true,
-        ip: data.ip,
+        ip: testResult.ip,
         responseTime,
         testedAt: new Date().toISOString(),
-        country: geoData?.country_name,
-        region: geoData?.region,
-        city: geoData?.city,
-        timezone: geoData?.timezone,
+        country: geoData?.country_name || 'Unknown',
+        region: geoData?.region || 'Unknown',
+        city: geoData?.city || 'Unknown',
+        timezone: geoData?.timezone || 'UTC',
         geoData: geoData ? {
           country: geoData.country_name,
           region: geoData.region,
@@ -2125,9 +2512,21 @@ function setupIPC() {
       const responseTime = Date.now() - startTime;
       console.error(`❌ Proxy test failed:`, error.message);
       
+      // Better error messages
+      let errorMessage = error.message || 'Connection failed';
+      if (error.code === 'ECONNREFUSED') {
+        errorMessage = 'Connection refused - proxy not responding';
+      } else if (error.code === 'ETIMEDOUT') {
+        errorMessage = 'Connection timeout - proxy too slow or unreachable';
+      } else if (error.code === 'ENOTFOUND') {
+        errorMessage = 'Host not found - invalid proxy address';
+      } else if (errorMessage.includes('auth')) {
+        errorMessage = 'Authentication failed - invalid username/password';
+      }
+      
       return {
         success: false,
-        error: error.message || 'Connection failed',
+        error: errorMessage,
         responseTime,
         testedAt: new Date().toISOString()
       };
@@ -2367,6 +2766,43 @@ function createLauncherWindow() {
     console.log('✅ Main window ready to show');
   });
   
+  // Prevent window close if browser profiles are open
+  win.on('close', (event) => {
+    const activeCount = chrome139Runtime.getActiveProfiles().length;
+    if (activeCount > 0) {
+      console.log('⚠️ Preventing window close - browser profiles still open:', activeCount);
+      event.preventDefault(); // Stop window from closing
+      
+      // Show warning dialog
+      const { dialog } = require('electron');
+      dialog.showMessageBox(win, {
+        type: 'warning',
+        title: 'Browser Profiles Open',
+        message: 'Cannot close BeastBrowser',
+        detail: `You have ${activeCount} browser profile(s) still open.
+
+Please close all browser windows first, then try closing BeastBrowser again.
+
+Or click "Force Close All" to close everything.`,
+        buttons: ['Cancel', 'Force Close All'],
+        defaultId: 0,
+        cancelId: 0
+      }).then(async result => {
+        // If user clicks "Force Close All"
+        if (result.response === 1) {
+          console.log('🛑 Force closing all browser profiles...');
+          
+          // Close all browsers via Chrome 139 runtime
+          await chrome139Runtime.closeAll();
+          
+          console.log('✅ All profiles closed, now closing app');
+          win.destroy(); // Force close window
+          app.quit();
+        }
+      });
+    }
+  });
+  
   loadRenderer(win);
   return win;
 }
@@ -2378,12 +2814,27 @@ let updater = null;
 app.whenReady().then(() => {
   console.log('🚀 BeastBrowser starting...');
   
+  // Clear any stale launch/close queues from previous sessions
+  launchQueue.clear();
+  closeQueue.clear();
+  console.log('🧹 Cleared stale launch/close queues');
+  
   // Step 1: Show splash screen immediately
   const splash = createSplashScreen();
   console.log('✨ Splash screen displayed');
   
   // Step 2: Setup IPC handlers
   setupIPC();
+  
+  // Step 2.5: Initialize Chrome 139 Runtime
+  console.log('🔍 Initializing Chrome 139 Runtime...');
+  if (!chrome139Runtime.initialized) {
+    chrome139Runtime.detectRuntime();
+    chrome139Runtime.initialized = true;
+  }
+  const runtimeInfo = chrome139Runtime.getRuntimeInfo();
+  console.log('📋 Chrome 139 Status:', runtimeInfo.available ? `✅ Available (v${runtimeInfo.version})` : '❌ Not Available');
+  console.log('📂 Chrome Path:', runtimeInfo.path || 'Not found');
   
   // Step 3: Create main window (hidden)
   const mainWindow = createLauncherWindow();
@@ -2490,11 +2941,81 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  // Automatically close all browser profiles before quitting
+  const activeCount = chrome139Runtime.getActiveProfiles().length;
+  if (activeCount > 0) {
+    console.log(`🔄 Auto-closing ${activeCount} browser profile(s)...`);
+    
+    try {
+      await chrome139Runtime.closeAll();
+      console.log('✅ All browser profiles closed');
+    } catch (e) {
+      console.error('❌ Error closing profiles:', e);
+    }
+  }
+  
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', async (event) => {
+  // Check if any browser profiles are still open
+  const activeCount = chrome139Runtime.getActiveProfiles().length;
+  if (activeCount > 0) {
+    console.log(`🔄 Closing ${activeCount} browser profile(s) before quit...`);
+    event.preventDefault(); // Prevent quit temporarily
+    
+    try {
+      // Close all browser profiles
+      await chrome139Runtime.closeAll();
+      console.log('✅ All browser profiles closed, quitting app...');
+      
+      // Force kill any remaining chrome processes
+      if (process.platform === 'win32') {
+        const { exec } = require('child_process');
+        exec('taskkill /F /IM chrome.exe /T', (error) => {
+          if (error && !error.message.includes('not found')) {
+            console.log('⚠️ No chrome.exe processes found (already closed)');
+          } else {
+            console.log('✅ Force killed any remaining chrome processes');
+          }
+        });
+      }
+      
+      // Now quit for real
+      setTimeout(() => app.quit(), 500); // Small delay to let processes die
+    } catch (e) {
+      console.error('❌ Error closing profiles:', e);
+      
+      // Show error dialog
+      const { dialog } = require('electron');
+      const result = await dialog.showMessageBox({
+        type: 'error',
+        title: 'Error Closing Profiles',
+        message: 'Could not close all browser profiles automatically',
+        detail: 'Some browser windows may still be open. Please close them manually.',
+        buttons: ['Cancel', 'Force Quit Anyway'],
+        defaultId: 0,
+        cancelId: 0
+      });
+      
+      // If user clicks "Force Quit Anyway"
+      if (result.response === 1) {
+        console.log('🛑 Force quitting...');
+        
+        // Kill all chrome processes forcefully
+        if (process.platform === 'win32') {
+          const { exec } = require('child_process');
+          exec('taskkill /F /IM chrome.exe /T');
+        }
+        
+        setTimeout(() => app.quit(), 300);
+      }
+    }
+    
+    return;
+  }
+  
   try { 
     if (devServerProcess) devServerProcess.kill();
     

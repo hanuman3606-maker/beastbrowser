@@ -38,7 +38,6 @@ interface RPAScript {
   id: string;
   name: string;
   description: string;
-  websiteUrl: string;
   executionTime: number; // in minutes
   scriptType: 'javascript' | 'custom' | 'template';
   scriptContent: string;
@@ -47,6 +46,8 @@ interface RPAScript {
   isActive: boolean;
   executionCount: number;
   lastExecuted?: string;
+  category?: string;
+  tags?: string[];
 }
 
 interface ScriptStep {
@@ -70,7 +71,6 @@ const RPAScriptBuilder: React.FC = () => {
   // Form states
   const [scriptName, setScriptName] = useState('');
   const [scriptDescription, setScriptDescription] = useState('');
-  const [websiteUrl, setWebsiteUrl] = useState('');
   const [executionTime, setExecutionTime] = useState(5);
   const [scriptType, setScriptType] = useState<'javascript' | 'custom' | 'template'>('javascript');
   const [scriptContent, setScriptContent] = useState('');
@@ -85,17 +85,21 @@ const RPAScriptBuilder: React.FC = () => {
         const parsedScripts = JSON.parse(savedScripts);
         console.log('✅ Loaded RPA scripts:', parsedScripts.length);
         setScripts(parsedScripts);
+        
+        // If no scripts exist, create defaults
+        if (parsedScripts.length === 0) {
+          console.log('📝 No scripts found, creating defaults...');
+          createDefaultScripts();
+        }
       } catch (error) {
         console.error('Failed to parse RPA scripts:', error);
-        // Start with empty scripts on error
-        setScripts([]);
-        localStorage.setItem('antidetect_rpa_scripts', JSON.stringify([]));
+        // Create default scripts on error
+        createDefaultScripts();
       }
     } else {
-      console.log('📝 No saved scripts found - starting fresh');
-      // Start with NO pre-built scripts - let user create their own
-      setScripts([]);
-      localStorage.setItem('antidetect_rpa_scripts', JSON.stringify([]));
+      console.log('📝 No saved scripts found - creating defaults');
+      // Create default pre-built scripts automatically
+      createDefaultScripts();
     }
   }, []);
 
@@ -106,7 +110,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_smooth`,
         name: scriptTemplates.smoothContinuous.name,
         description: scriptTemplates.smoothContinuous.description,
-        websiteUrl: 'https://example.com',
         executionTime: 2,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.smoothContinuous.content,
@@ -119,7 +122,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_fast`,
         name: scriptTemplates.fastScroll.name,
         description: scriptTemplates.fastScroll.description,
-        websiteUrl: 'https://example.com',
         executionTime: 2,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.fastScroll.content,
@@ -132,7 +134,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_slow`,
         name: scriptTemplates.slowReading.name,
         description: scriptTemplates.slowReading.description,
-        websiteUrl: 'https://example.com',
         executionTime: 3,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.slowReading.content,
@@ -145,7 +146,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_random`,
         name: scriptTemplates.randomJumps.name,
         description: scriptTemplates.randomJumps.description,
-        websiteUrl: 'https://example.com',
         executionTime: 2,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.randomJumps.content,
@@ -158,7 +158,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_pause`,
         name: scriptTemplates.pauseScroll.name,
         description: scriptTemplates.pauseScroll.description,
-        websiteUrl: 'https://example.com',
         executionTime: 3,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.pauseScroll.content,
@@ -171,7 +170,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_bounce`,
         name: scriptTemplates.bounceScroll.name,
         description: scriptTemplates.bounceScroll.description,
-        websiteUrl: 'https://example.com',
         executionTime: 2,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.bounceScroll.content,
@@ -184,7 +182,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_click`,
         name: scriptTemplates.randomClicking.name,
         description: scriptTemplates.randomClicking.description,
-        websiteUrl: 'https://example.com',
         executionTime: 5,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.randomClicking.content,
@@ -197,7 +194,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_clicker`,
         name: scriptTemplates.clicker.name,
         description: scriptTemplates.clicker.description,
-        websiteUrl: 'https://example.com',
         executionTime: 3,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.clicker.content,
@@ -210,7 +206,6 @@ const RPAScriptBuilder: React.FC = () => {
         id: `script_${Date.now()}_form`,
         name: scriptTemplates.formFiller.name,
         description: scriptTemplates.formFiller.description,
-        websiteUrl: 'https://example.com',
         executionTime: 2,
         scriptType: 'javascript',
         scriptContent: scriptTemplates.formFiller.content,
@@ -218,6 +213,19 @@ const RPAScriptBuilder: React.FC = () => {
         updatedAt: new Date().toISOString(),
         isActive: true,
         executionCount: 0
+      },
+      {
+        id: `script_${Date.now()}_webscroll`,
+        name: scriptTemplates.webScroll.name,
+        description: scriptTemplates.webScroll.description,
+        executionTime: 3,
+        scriptType: 'javascript',
+        scriptContent: scriptTemplates.webScroll.content,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isActive: true,
+        executionCount: 0,
+        category: 'scrolling'
       }
     ];
     
@@ -247,95 +255,39 @@ const RPAScriptBuilder: React.FC = () => {
   // Pre-built script templates - Multiple scrolling patterns
   const scriptTemplates = {
     smoothContinuous: {
-      name: '🔄 Smooth Continuous Scroll',
-      description: 'Continuous smooth scrolling up and down with detailed logging (3 sec delay)',
-      content: `console.log('🎯 AUTO-SCROLL: Script starting in 3 seconds...');
+      name: '🔄 Smooth Scroll Down-Up',
+      description: 'Scrolls to bottom then top (2 sec delay)',
+      content: `console.log('🔄 [Smooth Scroll] Script loaded - waiting 2 seconds...');
 
-setTimeout(() => {
-    console.log('✅ AUTO-SCROLL: Starting continuous scrolling!');
-    console.log('📍 Current URL:', window.location.href);
-    console.log('📏 Page height:', document.body.scrollHeight);
+setTimeout(function() {
+    console.log('🔄 [Smooth Scroll] Starting!');
     
-    // Continuous scrolling logic: top to bottom, bottom to top
-    let direction = 1; // 1 for down, -1 for up
-    const scrollSpeed = 10; // Increased speed for faster scrolling
-    const scrollInterval = 16; // ~60fps
-    let isScrolling = true;
-    let scrollCount = 0;
-
-    function continuousScroll() {
-        if (!isScrolling) {
-            console.log('⏹️ AUTO-SCROLL: Stopped by user interaction');
-            return;
-        }
-
-        const maxHeight = document.body.scrollHeight - window.innerHeight;
-        const currentPos = window.scrollY;
-
-        // Reverse direction at top or bottom
-        if (currentPos >= maxHeight && direction === 1) {
-            direction = -1; // Reverse to scroll up
-            console.log('🔄 AUTO-SCROLL: Reached bottom, scrolling UP now');
-        } else if (currentPos <= 0 && direction === -1) {
-            direction = 1; // Reverse to scroll down
-            console.log('🔄 AUTO-SCROLL: Reached top, scrolling DOWN now');
-        }
-
-        window.scrollBy({
-            top: scrollSpeed * direction,
-            behavior: 'smooth'
-        });
-        
-        scrollCount++;
-        
-        // Log every 100 scrolls
-        if (scrollCount % 100 === 0) {
-            console.log(\`📊 AUTO-SCROLL: Position \${currentPos}/\${maxHeight}, Direction: \${direction === 1 ? 'DOWN' : 'UP'}\`);
-        }
-
-        // Continue scrolling
-        setTimeout(continuousScroll, scrollInterval);
-    }
-
-    // Start scrolling
-    console.log('🚀 AUTO-SCROLL: Continuous scroll loop started!');
-    continuousScroll();
-
-    // Stop scrolling on user interaction
-    window.addEventListener('wheel', () => {
-        console.log('🛑 AUTO-SCROLL: User scrolled manually, stopping auto-scroll');
-        isScrolling = false;
-    });
-    
-    window.addEventListener('touchstart', () => {
-        console.log('🛑 AUTO-SCROLL: Touch detected, stopping auto-scroll');
-        isScrolling = false;
-    });
-
-    // Optional: Functions to manually trigger top/bottom scroll
-    window.scrollToTop = function() {
-        console.log('⬆️ AUTO-SCROLL: Manual scroll to top triggered');
-        window.scrollTo({
-            top: 0,
-            behavior: 'smooth'
-        });
-        isScrolling = false;
-    }
-
-    window.scrollToBottom = function() {
-        console.log('⬇️ AUTO-SCROLL: Manual scroll to bottom triggered');
+    function scrollToBottom() {
+        console.log('⬇️ [Smooth Scroll] Scrolling to BOTTOM...');
         window.scrollTo({
             top: document.body.scrollHeight,
             behavior: 'smooth'
         });
-        isScrolling = false;
     }
     
-    console.log('✅ AUTO-SCROLL: Event listeners attached, scrolling active!');
+    function scrollToTop() {
+        console.log('⬆️ [Smooth Scroll] Scrolling to TOP...');
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+    }
     
-}, 3000); // Reduced to 3 seconds for faster testing
-
-console.log('⏰ AUTO-SCROLL: Waiting 3 seconds before starting...');`
+    // Scroll down
+    scrollToBottom();
+    
+    // After 3 seconds, scroll up
+    setTimeout(function() {
+        scrollToTop();
+        console.log('✅ [Smooth Scroll] Complete!');
+    }, 3000);
+    
+}, 2000);`
     },
     fastScroll: {
       name: '⚡ Fast Aggressive Scroll',
@@ -592,7 +544,7 @@ setTimeout(() => {
     },
     formFiller: {
       name: 'Form Filler Script',
-      description: 'Automatically fills form fields with sample data',
+      description: 'Automatically fills form fields with sample data (with proper focus)',
       content: `setTimeout(() => {
     const sampleData = {
         name: 'John Doe',
@@ -601,32 +553,152 @@ setTimeout(() => {
         message: 'This is an automated test message.'
     };
 
-    function fillForms() {
+    async function typeIntoInput(input, text) {
+        // Focus the input properly
+        input.focus();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Click to ensure focus
+        input.click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Clear existing value
+        input.value = '';
+        
+        // Type character by character for realistic behavior
+        for (let char of text) {
+            input.value += char;
+            
+            // Dispatch all necessary events
+            input.dispatchEvent(new Event('keydown', { bubbles: true }));
+            input.dispatchEvent(new Event('keypress', { bubbles: true }));
+            input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            input.dispatchEvent(new Event('keyup', { bubbles: true }));
+            
+            await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
+        }
+        
+        // Blur to trigger validation
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+        
+        console.log('✅ Filled:', input.name || input.id || 'input', '=', text);
+    }
+
+    async function fillForms() {
+        console.log('📝 Starting form filling...');
+        
         // Fill text inputs
-        document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"]').forEach(input => {
-            if (input.name.toLowerCase().includes('name')) {
-                input.value = sampleData.name;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            } else if (input.name.toLowerCase().includes('email')) {
-                input.value = sampleData.email;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            } else if (input.name.toLowerCase().includes('phone')) {
-                input.value = sampleData.phone;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
+        const textInputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input:not([type])');
+        for (let input of textInputs) {
+            if (input.name.toLowerCase().includes('name') || input.id.toLowerCase().includes('name')) {
+                await typeIntoInput(input, sampleData.name);
+            } else if (input.name.toLowerCase().includes('email') || input.id.toLowerCase().includes('email')) {
+                await typeIntoInput(input, sampleData.email);
+            } else if (input.name.toLowerCase().includes('phone') || input.id.toLowerCase().includes('phone')) {
+                await typeIntoInput(input, sampleData.phone);
             }
-        });
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
 
         // Fill textareas
-        document.querySelectorAll('textarea').forEach(textarea => {
-            textarea.value = sampleData.message;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        });
+        const textareas = document.querySelectorAll('textarea');
+        for (let textarea of textareas) {
+            await typeIntoInput(textarea, sampleData.message);
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
 
-        console.log('Form filled with sample data');
+        console.log('✅ Form filling complete!');
     }
 
     fillForms();
 }, 2000);`
+    },
+    webScroll: {
+      name: '🌐 Web Scroll',
+      description: 'Continuous scrolling - Top to Bottom to Top (repeats forever!)',
+      content: `console.log('🌐 [CONTINUOUS SCROLL] Loading...');
+console.log('⏰ Will start in 10 seconds...');
+
+setTimeout(() => {
+    console.log('🚀 [CONTINUOUS SCROLL] STARTING NOW!');
+    
+    // Continuous scrolling logic: top to bottom, bottom to top
+    let direction = 1; // 1 for down, -1 for up
+    const scrollSpeed = 10; // Increased speed for faster scrolling
+    const scrollInterval = 16; // ~60fps
+    let isScrolling = true;
+
+    function continuousScroll() {
+        if (!isScrolling) {
+            console.log('⏸️ [CONTINUOUS SCROLL] Stopped by user interaction');
+            return;
+        }
+
+        const maxHeight = document.body.scrollHeight - window.innerHeight; // Full page height
+        const currentPos = window.scrollY;
+
+        // Reverse direction at top or bottom
+        if (currentPos >= maxHeight && direction === 1) {
+            direction = -1; // Reverse to scroll up
+            console.log('⬆️ [CONTINUOUS SCROLL] Reached BOTTOM, going UP');
+        } else if (currentPos <= 0 && direction === -1) {
+            direction = 1; // Reverse to scroll down
+            console.log('⬇️ [CONTINUOUS SCROLL] Reached TOP, going DOWN');
+        }
+
+        window.scrollBy({
+            top: scrollSpeed * direction,
+            behavior: 'smooth'
+        });
+
+        // Continue scrolling
+        setTimeout(continuousScroll, scrollInterval);
+    }
+
+    // Start scrolling
+    continuousScroll();
+    console.log('✅ [CONTINUOUS SCROLL] Animation loop started!');
+    console.log('💡 Scrolling will continue forever - top to bottom to top!');
+    console.log('🛑 Use mouse wheel or touch to stop');
+
+    // Stop scrolling on user interaction
+    window.addEventListener('wheel', () => {
+        if (isScrolling) {
+            console.log('🛑 [CONTINUOUS SCROLL] Stopped by wheel event');
+            isScrolling = false;
+        }
+    });
+    
+    window.addEventListener('touchstart', () => {
+        if (isScrolling) {
+            console.log('🛑 [CONTINUOUS SCROLL] Stopped by touch event');
+            isScrolling = false;
+        }
+    });
+
+    // Optional: Functions to manually trigger top/bottom scroll
+    window.scrollToTop = function() {
+        console.log('⬆️ Manual scroll to top');
+        window.scrollTo({
+            top: 0,
+            behavior: 'smooth'
+        });
+        isScrolling = false;
+    };
+
+    window.scrollToBottom = function() {
+        console.log('⬇️ Manual scroll to bottom');
+        window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth'
+        });
+        isScrolling = false;
+    };
+    
+    console.log('💡 Type scrollToTop() or scrollToBottom() in console to manually control');
+    
+}, 10000); // Initial 10-second delay`
     }
   };
 
@@ -636,7 +708,6 @@ setTimeout(() => {
       id: `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: '',
       description: '',
-      websiteUrl: '',
       executionTime: 5,
       scriptType: 'javascript',
       scriptContent: '',
@@ -650,7 +721,6 @@ setTimeout(() => {
     setIsEditing(true);
     setScriptName('');
     setScriptDescription('');
-    setWebsiteUrl('');
     setExecutionTime(5);
     setScriptType('javascript');
     setScriptContent('');
@@ -659,19 +729,14 @@ setTimeout(() => {
     console.log('✅ New script form opened, isEditing:', true);
   };
 
-  const handleLoadTemplate = (templateKey: keyof typeof scriptTemplates) => {
-    const template = scriptTemplates[templateKey];
-    setScriptContent(template.content);
-    setScriptName(template.name);
-    setScriptDescription(template.description);
-    // Don't set currentScript - this is a NEW script, not an update
-    setCurrentScript(null);
-    toast.success(`Loaded ${template.name} template`);
-  };
-
   const handleSaveScript = async () => {
-    if (!scriptName.trim() || !websiteUrl.trim()) {
-      toast.error('Please fill in script name and website URL');
+    if (!scriptName.trim()) {
+      toast.error('Please enter a script name');
+      return;
+    }
+    
+    if (!scriptContent.trim()) {
+      toast.error('Please enter script content');
       return;
     }
 
@@ -682,7 +747,6 @@ setTimeout(() => {
         id: currentScript?.id || `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: scriptName,
         description: scriptDescription,
-        websiteUrl: websiteUrl,
         executionTime: executionTime,
         scriptType: scriptType,
         scriptContent: scriptContent,
@@ -692,19 +756,16 @@ setTimeout(() => {
         executionCount: currentScript?.executionCount || 0
       };
 
-      // DEBUG: Log exactly what we're saving
-      console.log('🔍 SAVING SCRIPT WITH VALUES:', {
-        id: scriptToSave.id,
-        name: scriptToSave.name,
-        websiteUrl: scriptToSave.websiteUrl,
-        websiteUrlLength: scriptToSave.websiteUrl?.length || 0,
-        hasWebsiteUrl: !!scriptToSave.websiteUrl,
-        scriptContent: scriptToSave.scriptContent?.substring(0, 50) + '...',
-        scriptContentLength: scriptToSave.scriptContent?.length || 0,
-        hasScriptContent: !!scriptToSave.scriptContent,
-        executionTime: scriptToSave.executionTime,
-        scriptType: scriptToSave.scriptType
-      });
+        // DEBUG: Log exactly what we're saving
+        console.log('🔍 SAVING SCRIPT WITH VALUES:', {
+            id: scriptToSave.id,
+            name: scriptToSave.name,
+            scriptContent: scriptToSave.scriptContent?.substring(0, 50) + '...',
+            scriptContentLength: scriptToSave.scriptContent?.length || 0,
+            hasScriptContent: !!scriptToSave.scriptContent,
+            executionTime: scriptToSave.executionTime,
+            scriptType: scriptToSave.scriptType
+        });
 
       let updatedScripts: RPAScript[];
       
@@ -732,8 +793,6 @@ setTimeout(() => {
       const verifyScript = updatedScripts[updatedScripts.length - 1];
       console.log('✅ VERIFICATION - Last script in array:', {
         name: verifyScript.name,
-        websiteUrl: verifyScript.websiteUrl,
-        hasWebsiteUrl: !!verifyScript.websiteUrl,
         scriptContentLength: verifyScript.scriptContent?.length || 0,
         hasScriptContent: !!verifyScript.scriptContent
       });
@@ -765,7 +824,6 @@ setTimeout(() => {
     setCurrentScript(script);
     setScriptName(script.name);
     setScriptDescription(script.description);
-    setWebsiteUrl(script.websiteUrl);
     setExecutionTime(script.executionTime);
     setScriptType(script.scriptType);
     setScriptContent(script.scriptContent);
@@ -846,7 +904,6 @@ setTimeout(() => {
 
   const validateScript = () => {
     if (!scriptName.trim()) return 'Script name is required';
-    if (!websiteUrl.trim()) return 'Website URL is required';
     if (!scriptContent.trim()) return 'Script content is required';
     if (scriptType === 'javascript') {
       try {
@@ -915,21 +972,16 @@ setTimeout(() => {
       <Alert className="bg-blue-50 border-blue-200">
         <AlertCircle className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-sm text-blue-900">
-          <strong>📝 How to Create Automation Scripts:</strong>
+          <strong>🎯 Quick Guide - Create & Run RPA Script:</strong>
           <div className="mt-2 space-y-1">
-            <p>• <strong>Script Name:</strong> Give your script a unique name</p>
-            <p>• <strong>Website URL:</strong> Enter the target website (e.g., https://google.com)</p>
-            <p>• <strong>Execution Time:</strong> How long to keep browser open (minutes)</p>
-            <p>• <strong>Script Code:</strong> Write JavaScript code to automate browser actions</p>
+            <p><strong>1. Create Script:</strong> Click "New Script" → Enter name & paste code → Save</p>
+            <p><strong>2. Run Script:</strong> Go to Profiles tab → Select profile → "Execute RPA"</p>
+            <p><strong>3. Enter URL:</strong> Type website URL in profile's Starter URL field</p>
+            <p><strong>4. Auto-Close:</strong> Browser closes after execution time (e.g., 5 minutes)</p>
           </div>
-          <div className="mt-3 p-2 bg-white rounded border border-blue-300">
-            <strong>💡 Common Commands:</strong>
-            <div className="mt-1 font-mono text-xs space-y-1">
-              <p>• <code>window.scrollBy({'{'}top: 300, behavior: 'smooth'{'}'})</code> - Scroll down</p>
-              <p>• <code>document.querySelector('button').click()</code> - Click element</p>
-              <p>• <code>console.log('message')</code> - Debug logging</p>
-              <p>• <code>setTimeout(() ={'>'} {'{'}...{'}'}, 3000)</code> - Delay actions</p>
-            </div>
+          <div className="mt-3 p-2 bg-green-50 rounded border border-green-300">
+            <strong>✅ 10 Pre-built Scripts Available!</strong>
+            <p className="mt-1 text-xs">Smooth scrolling, clicking, form filling scripts ready to use!</p>
           </div>
         </AlertDescription>
       </Alert>
@@ -1062,25 +1114,7 @@ setTimeout(() => {
                           type="text"
                           value={scriptName}
                           onChange={(e) => setScriptName(e.target.value)}
-                          onInput={(e) => setScriptName((e.target as HTMLInputElement).value)}
                           placeholder="Enter script name"
-                          disabled={false}
-                          readOnly={false}
-                          autoComplete="off"
-                          autoFocus={true}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="websiteUrl">Website URL *</Label>
-                        <Input
-                          id="websiteUrl"
-                          type="url"
-                          value={websiteUrl}
-                          onChange={(e) => setWebsiteUrl(e.target.value)}
-                          onInput={(e) => setWebsiteUrl((e.target as HTMLInputElement).value)}
-                          placeholder="https://example.com"
-                          disabled={false}
-                          readOnly={false}
                           autoComplete="off"
                         />
                       </div>
@@ -1092,11 +1126,8 @@ setTimeout(() => {
                         id="scriptDescription"
                         value={scriptDescription}
                         onChange={(e) => setScriptDescription(e.target.value)}
-                        onInput={(e) => setScriptDescription((e.target as HTMLTextAreaElement).value)}
                         placeholder="Describe what this script does"
                         rows={2}
-                        disabled={false}
-                        readOnly={false}
                       />
                     </div>
 
@@ -1108,11 +1139,8 @@ setTimeout(() => {
                           type="number"
                           value={executionTime}
                           onChange={(e) => setExecutionTime(Number(e.target.value))}
-                          onInput={(e) => setExecutionTime(Number((e.target as HTMLInputElement).value))}
                           min="1"
                           max="60"
-                          disabled={false}
-                          readOnly={false}
                         />
                       </div>
                       <div className="space-y-2">
@@ -1133,41 +1161,15 @@ setTimeout(() => {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label htmlFor="scriptContent">Script Content</Label>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleLoadTemplate('smoothContinuous')}
-                          >
-                            Load Scroll Template
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleLoadTemplate('formFiller')}
-                          >
-                            Load Form Template
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleLoadTemplate('clicker')}
-                          >
-                            Load Click Template
-                          </Button>
-                        </div>
                       </div>
                       <Textarea
                         ref={codeEditorRef}
                         id="scriptContent"
                         value={scriptContent}
                         onChange={(e) => setScriptContent(e.target.value)}
-                        onInput={(e) => setScriptContent((e.target as HTMLTextAreaElement).value)}
                         placeholder="Enter your JavaScript code here..."
                         rows={15}
                         className="font-mono text-sm"
-                        disabled={false}
-                        readOnly={false}
                         spellCheck={false}
                       />
                     </div>
@@ -1201,7 +1203,6 @@ setTimeout(() => {
                       <h4 className="font-medium mb-2">Script Preview</h4>
                       <div className="space-y-2 text-sm">
                         <div><strong>Name:</strong> {scriptName || 'Untitled Script'}</div>
-                        <div><strong>Website:</strong> {websiteUrl || 'No URL specified'}</div>
                         <div><strong>Execution Time:</strong> {executionTime} minutes</div>
                         <div><strong>Type:</strong> {scriptType}</div>
                       </div>

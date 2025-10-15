@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertCircle, CheckCircle, Play, Square, Edit, Trash2, TestTube, Plus, Bot, Copy, Monitor, Smartphone, Tablet, Globe, Link, PlayCircle, RefreshCw, Database, Cookie, History, HardDrive, Cpu, Loader2, Settings, Fingerprint, Shield, Clipboard } from 'lucide-react';
+import { AlertCircle, CheckCircle, Play, Square, Edit, Trash2, TestTube, Plus, Bot, Copy, Monitor, Smartphone, Tablet, Globe, Link, PlayCircle, RefreshCw, Database, Cookie, History, HardDrive, Cpu, Loader2, Settings, Fingerprint, Shield, Clipboard, Upload, Download } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import CreateProfileModal, { Profile } from './CreateProfileModal';
 import ProfilePanel from './ProfilePanel';
@@ -70,58 +70,6 @@ const convertServiceScriptToScript = (serviceScript: ServiceRPAScript): RPAScrip
     lastExecuted: serviceScript.lastRun ? (typeof serviceScript.lastRun === 'string' ? serviceScript.lastRun : serviceScript.lastRun.toISOString()) : undefined
   };
 };
-
-// Declare window.electronAPI type
-declare global {
-  interface Window {
-    electronAPI?: {
-      openProfile: (profile: Profile) => Promise<{ success: boolean; message?: string; error?: string }>;
-      closeProfile: (profileId: string) => Promise<{ success: boolean; error?: string }>;
-      closeAllProfiles: () => Promise<{ success: boolean; closedCount?: number; error?: string }>;
-      getProfileStatus: (profileId: string) => Promise<{ id: string; isOpen: boolean; logs: any[] }>;
-      testProxy: (proxyConfig: any) => Promise<{ 
-        success: boolean; 
-        ip?: string; 
-        error?: string;
-        country?: string;
-        region?: string;
-        city?: string;
-        latitude?: number;
-        longitude?: number;
-        timezone?: string;
-        locale?: string;
-        responseTime?: number;
-        testEndpoint?: string;
-        testedAt?: string;
-        geoData?: {
-          country?: string;
-          region?: string;
-          city?: string;
-          latitude?: number;
-          longitude?: number;
-          timezone?: string;
-          locale?: string;
-        };
-      }>;
-      getProfileLogs: (profileId: string) => Promise<any[]>;
-      clearProfileLogs: (profileId: string) => Promise<{ success: boolean }>;
-      getSystemInfo: () => Promise<any>;
-      showSaveDialog: () => Promise<any>;
-      showOpenDialog: () => Promise<any>;
-      getTimezoneFromIP: (ip: string) => Promise<{ timezone: string; country: string }>;
-      executeRPAScript: (profileId: string, script: any) => Promise<{ success: boolean; error?: string; message?: string }>;
-      onProfileWindowClosed: (callback: (event: any, profileId: string) => void) => void;
-      removeAllListeners: (channel: string) => void;
-      // NEW: Cache, Cookies और History clearing functions
-      clearProfileData: (profileId: string, dataTypes: string[]) => Promise<{ success: boolean; message?: string; error?: string; clearedTypes?: string[] }>;
-      clearAllProfileData: (profileId: string) => Promise<{ success: boolean; message?: string; error?: string; clearedItems?: any }>;
-      getProfileDataUsage: (profileId: string) => Promise<{ success: boolean; usage?: any; error?: string }>;
-      // Beastbrowser
-      antiBrowserOpen?: (profile: Profile, options?: any) => Promise<{ success: boolean; error?: string }>;
-      antiBrowserClose?: (profileId: string) => Promise<{ success: boolean; error?: string }>;
-    };
-  }
-}
 
 interface ProfileManagerProps {
   profiles: Profile[];
@@ -1153,6 +1101,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
       id: profile.id,
       name: profile.name,
       browserType: profile.browserType,
+      platform: profile.platform, // CRITICAL FIX: Add platform field!
       userAgent: profile.userAgent,
       userAgentPlatform: profile.userAgentPlatform,
       proxyType: profile.proxyType,
@@ -1162,7 +1111,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
         username: profile.proxy.username,
         password: profile.proxy.password
       } : null,
-      startingUrl: profile.startingUrl || 'https://duckduckgo.com',
+      startingUrl: profile.startingUrl || '', // Empty = use default test page
       timezone: profile.timezone,
       locale: profile.locale,
       fingerprint: profile.fingerprint ? {
@@ -1206,9 +1155,9 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
       // Sanitize starting URL (fix about bablank issue)
       const normalizeStartingUrl = (url?: string) => {
         const u = (url || '').trim();
-        if (!u) return 'https://duckduckgo.com';
+        if (!u) return 'https://google.com';
         const lower = u.toLowerCase().replace(/\s+/g, ' ').trim();
-        if (lower === 'about blank' || lower === 'about  blank' || lower.includes('about bablank')) return 'https://duckduckgo.com';
+        if (lower === 'about blank' || lower === 'about  blank' || lower.includes('about bablank')) return 'https://google.com';
         return u;
       };
       
@@ -1233,6 +1182,33 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
         success = result.success;
         errorMessage = result.error || '';
         console.log('🚀 LAUNCH: Anti-Browser IPC result:', result);
+        console.log('🚀 LAUNCH: Success:', success, 'Error:', errorMessage);
+        
+        if (success) {
+          toast.success(`Profile "${profile.name}" launched successfully`);
+          
+          // CRITICAL: Immediately update profile state to reflect the launch
+          const safeProfiles = Array.isArray(profiles) ? profiles : [];
+          const updatedProfiles = safeProfiles.map(p => 
+            p.id === profile.id ? { ...p, isActive: true } : p
+          );
+          console.log('🚀 LAUNCH: Immediately updating profile state for:', profile.name);
+          onProfilesChange(updatedProfiles);
+          
+          // Force localStorage update immediately
+          localStorage.setItem('antidetect_profiles', JSON.stringify(updatedProfiles));
+          
+          // Verify launch status after a short delay
+          setTimeout(async () => {
+            console.log('🚀 LAUNCH: Verifying launch status for:', profile.name);
+            if (window.electronAPI?.getProfileStatus) {
+              const status = await window.electronAPI.getProfileStatus(profile.id);
+              console.log('🚀 LAUNCH: Post-launch status verification:', status);
+            }
+          }, 1500);
+        } else {
+          toast.error(`Failed to launch profile: ${errorMessage}`);
+        }
       } else if ((window as any).electronAPI?.openProfile) {
         console.log('🚀 LAUNCH: Using Electron API (BeastBrowser) to open profile');
         const result = await (window as any).electronAPI.openProfile(safeProfile);
@@ -1322,19 +1298,19 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
       let success = false;
       let errorMessage = '';
 
-      // Try using Electron API first
-      if (profile.browserType === 'anti' && window.electronAPI?.antiBrowserClose) {
-        console.log('🔴 CLOSE: Using Anti-Browser IPC to close profile');
+      // Use antiBrowserClose for all profiles (works for Chrome 139)
+      if (window.electronAPI?.antiBrowserClose) {
+        console.log('🔴 CLOSE: Using antiBrowserClose IPC');
         const result = await window.electronAPI.antiBrowserClose(profile.id);
-        success = result.success;
-        errorMessage = result.error || '';
-        console.log('🔴 CLOSE: Anti-Browser IPC result:', result);
+        success = result?.success || false;
+        errorMessage = result?.error || '';
+        console.log('🔴 CLOSE: IPC result:', result);
       } else if (window.electronAPI?.closeProfile) {
-        console.log('🔴 CLOSE: Using Electron API to close profile (BeastBrowser)');
+        console.log('🔴 CLOSE: Using closeProfile alias');
         const result = await window.electronAPI.closeProfile(profile.id);
-        success = result.success;
-        errorMessage = result.error || '';
-        console.log('🔴 CLOSE: BeastBrowser IPC result:', result);
+        success = result?.success || false;
+        errorMessage = result?.error || '';
+        console.log('🔴 CLOSE: IPC result:', result);
       } else {
         console.log('🔴 CLOSE: Electron API not available, using fallback');
         // Fallback for web mode - always succeed since we can't actually close external windows
@@ -1501,26 +1477,26 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
           
           if (profile) {
             try {
-              // Execute the actual RPA script
+              // Execute the actual RPA script (creates extension)
               await executeRPAScript(script, profile);
               scriptSuccessCount++;
-              toast.success(`Script completed on profile "${profile.name}"`);
               
-              // Handle auto-close after completion if enabled
-              if (closeAfterCompletion) {
-                setTimeout(async () => {
-                  try {
-                    await handleCloseProfile(profile);
-                    setRpaOpenedProfiles(prev => {
-                      const newSet = new Set(prev);
-                      newSet.delete(profileId);
-                      return newSet;
-                    });
-                    toast.info(`Profile "${profile.name}" auto-closed after script completion`);
-                  } catch (error) {
-                    console.warn(`Failed to auto-close profile ${profile.name}:`, error);
-                  }
-                }, 2000); // 2 second delay before closing
+              // Check if profile is already running
+              const electronStatus = await window.electronAPI?.getProfileStatus(profile.id);
+              const isRunning = electronStatus?.isOpen || profile.isActive;
+              
+              if (isRunning) {
+                // Profile already running - just show message, don't close/reopen
+                console.log(`ℹ️ Profile "${profile.name}" is already running`);
+                console.log(`💡 RPA script injected! Close and reopen browser to activate script.`);
+                toast.info(`Profile "${profile.name}" is already open. Close and reopen browser to run the script.`, {
+                  duration: 5000
+                });
+              } else {
+                // Profile not running - launch it with extension
+                console.log(`🚀 Launching profile "${profile.name}" with RPA extension...`);
+                await handleLaunchProfile(profile);
+                toast.success(`Profile "${profile.name}" launched! Script will execute in 1 second. Check console (F12).`);
               }
               
             } catch (error) {
@@ -1534,29 +1510,6 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
         // Wait for all scripts to complete
         await Promise.allSettled(scriptPromises);
 
-        // Set up auto-close timers for all profiles
-        successfulProfiles.forEach(profileId => {
-          const profile = profiles.find(p => p.id === profileId);
-          if (profile) {
-            setTimeout(async () => {
-              try {
-                // Only auto-close if the profile is still marked as RPA-opened
-                if (rpaOpenedProfiles.has(profileId)) {
-                  await handleCloseProfile(profile);
-                  setRpaOpenedProfiles(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(profileId);
-                    return newSet;
-                  });
-                  toast.info(`Profile "${profile.name}" auto-closed after completion`);
-                }
-              } catch (error) {
-                console.warn(`Failed to auto-close profile ${profile.name} after completion:`, error);
-              }
-            }, 5000); // 5 seconds delay after completion
-          }
-        });
-
         // Mark script as completed
         setTimeout(() => {
           setRpaExecutions(prev => prev.filter(exec => 
@@ -1567,7 +1520,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
           rpaService.setScriptRunning(selectedRPAScript, false);
           
           if (scriptSuccessCount > 0) {
-            toast.success(`RPA script "${script.name}" completed successfully on ${scriptSuccessCount} profiles!`);
+            toast.success(`RPA script "${script.name}" injected into ${scriptSuccessCount} profile(s)! Check browser console (F12) to see execution.`);
           }
           if (scriptFailCount > 0) {
             toast.error(`RPA script failed on ${scriptFailCount} profiles`);
@@ -1594,6 +1547,27 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
       const executeAsync = async () => {
         try {
           console.log(`🤖 Executing RPA script "${script.name}" on profile "${profile.name}"`);
+          
+          // AUTO-INJECT RPA Website URL into Profile's Starting URL
+          if (script.websiteUrl && script.websiteUrl.trim()) {
+            console.log(`🌐 RPA has Website URL: ${script.websiteUrl}`);
+            console.log(`💡 Injecting into profile's Starting URL for browser launch...`);
+            
+            // Update profile temporarily with RPA's website URL
+            const updatedProfile = { ...profile, startingUrl: script.websiteUrl };
+            
+            // Save to storage so browser launch uses it
+            await window.electronAPI.saveProfile(updatedProfile);
+            console.log(`✅ Profile Starting URL updated to: ${script.websiteUrl}`);
+            
+            // Update parent state through callback
+            if (onProfilesChange) {
+              const updatedProfiles = profiles.map(p => p.id === profile.id ? updatedProfile : p);
+              onProfilesChange(updatedProfiles);
+            }
+          } else {
+            console.log(`ℹ️ No Website URL in RPA script - using profile's existing Starting URL`);
+          }
           
           // Check if profile browser window is actually open via Electron API
           if (window.electronAPI?.getProfileStatus) {
@@ -1624,7 +1598,7 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
             console.log('📥 Received result from Electron:', result);
             
             if (result.success) {
-              console.log(`✅ RPA script "${script.name}" completed successfully on profile "${profile.name}"`);
+              console.log(`✅ RPA script "${script.name}" injected into profile "${profile.name}" - will execute after delay`);
               resolve();
             } else {
               throw new Error(result.error || 'Script execution failed');
@@ -1875,6 +1849,93 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
     }
   };
 
+  // Export/Import handlers
+  const handleExportProfiles = async () => {
+    if (selectedProfiles.length === 0) {
+      toast.error('Please select profiles to export');
+      return;
+    }
+
+    if (!window.electronAPI?.exportProfileMultiple) {
+      toast.error('Export not available in web mode');
+      return;
+    }
+
+    if (!currentUser) {
+      toast.error('Please log in to export profiles');
+      return;
+    }
+
+    try {
+      const safeProfiles = Array.isArray(profiles) ? profiles : [];
+      const profilesToExport = safeProfiles.filter(p => selectedProfiles.includes(p.id));
+
+      if (profilesToExport.length === 0) {
+        toast.error('No valid profiles selected');
+        return;
+      }
+
+      console.log(`📤 Exporting ${profilesToExport.length} profile(s)...`);
+      
+      const result = await window.electronAPI.exportProfileMultiple(profilesToExport, currentUser);
+
+      if (result.success) {
+        toast.success(`Successfully exported ${result.profileCount} profile(s) to ${result.path}`);
+        console.log(`✅ Export complete: ${result.path} (${result.fileSize} bytes)`);
+      } else if (!result.canceled) {
+        toast.error(`Export failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export profiles');
+    }
+  };
+
+  const handleImportProfiles = async () => {
+    if (!window.electronAPI?.importProfile) {
+      toast.error('Import not available in web mode');
+      return;
+    }
+
+    if (!currentUser) {
+      toast.error('Please log in to import profiles');
+      return;
+    }
+
+    try {
+      console.log('📥 Starting profile import...');
+      
+      const safeProfiles = Array.isArray(profiles) ? profiles : [];
+      const result = await window.electronAPI.importProfile(currentUser, safeProfiles);
+
+      if (result.success && result.profiles) {
+        // Add imported profiles to the list
+        const updatedProfiles = [...safeProfiles, ...result.profiles];
+        onProfilesChange(updatedProfiles);
+
+        const conflictMsg = result.conflicts && result.conflicts > 0 
+          ? ` (${result.conflicts} renamed due to conflicts)` 
+          : '';
+        
+        toast.success(`Successfully imported ${result.profiles.length} profile(s)${conflictMsg}`);
+        console.log(`✅ Import complete: ${result.profiles.length} profiles imported`);
+
+        // Show details of renamed profiles
+        const renamedProfiles = result.profiles.filter((p: any) => p.wasRenamed);
+        if (renamedProfiles.length > 0) {
+          console.log('📝 Renamed profiles:', renamedProfiles.map((p: any) => 
+            `"${p.originalName}" → "${p.name}"`
+          ));
+        }
+      } else if (!result.canceled) {
+        toast.error(`Import failed: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error('Failed to import profiles');
+    }
+  };
+
   const handleRPAAction = () => {
     if (selectedProfiles.length === 0) {
       toast.error('Please select profiles first');
@@ -2119,6 +2180,27 @@ export const ProfileManager: React.FC<ProfileManagerProps> = ({ profiles, onProf
               >
                 <Bot className="w-3 h-3 mr-1" />
                 Automate ({selectedProfiles.length})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportProfiles}
+                disabled={selectedProfiles.length === 0}
+                className="border-purple-300 text-purple-700 hover:bg-purple-50 hover:text-purple-900 h-8 text-xs"
+                title="Export selected profiles to encrypted file"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Export ({selectedProfiles.length})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImportProfiles}
+                className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900 h-8 text-xs"
+                title="Import profiles from encrypted file"
+              >
+                <Upload className="w-3 h-3 mr-1" />
+                Import
               </Button>
             </div>
           </div>

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
@@ -11,12 +12,36 @@ interface LoginFormProps {
   onSwitchToSignup: () => void;
 }
 
+// Secure storage keys
+const STORAGE_KEYS = {
+  REMEMBER_ME: 'beast_remember_me',
+  SAVED_EMAIL: 'beast_saved_email',
+  SAVED_PASSWORD: 'beast_saved_password'
+};
+
 export default function LoginForm({ onSwitchToSignup }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+
+  // Load saved credentials on mount
+  useEffect(() => {
+    const savedRememberMe = localStorage.getItem(STORAGE_KEYS.REMEMBER_ME) === 'true';
+    if (savedRememberMe) {
+      const savedEmail = localStorage.getItem(STORAGE_KEYS.SAVED_EMAIL) || '';
+      const savedPassword = localStorage.getItem(STORAGE_KEYS.SAVED_PASSWORD) || '';
+      
+      if (savedEmail && savedPassword) {
+        setEmail(savedEmail);
+        setPassword(savedPassword);
+        setRememberMe(true);
+        console.log('✅ Loaded saved credentials');
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,6 +56,20 @@ export default function LoginForm({ onSwitchToSignup }: LoginFormProps) {
       const result = await login(email, password);
       
       if (result.success) {
+        // Save credentials if "Remember Me" is checked
+        if (rememberMe) {
+          localStorage.setItem(STORAGE_KEYS.REMEMBER_ME, 'true');
+          localStorage.setItem(STORAGE_KEYS.SAVED_EMAIL, email);
+          localStorage.setItem(STORAGE_KEYS.SAVED_PASSWORD, password);
+          console.log('💾 Credentials saved for next login');
+        } else {
+          // Clear saved credentials if unchecked
+          localStorage.removeItem(STORAGE_KEYS.REMEMBER_ME);
+          localStorage.removeItem(STORAGE_KEYS.SAVED_EMAIL);
+          localStorage.removeItem(STORAGE_KEYS.SAVED_PASSWORD);
+          console.log('🗑️ Credentials cleared');
+        }
+        
         toast.success('Successfully logged in!');
       } else {
         // Handle specific Firebase auth errors
@@ -103,6 +142,20 @@ export default function LoginForm({ onSwitchToSignup }: LoginFormProps) {
                 )}
               </Button>
             </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="remember"
+              checked={rememberMe}
+              onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+            />
+            <Label
+              htmlFor="remember"
+              className="text-sm font-normal cursor-pointer select-none"
+            >
+              Remember my email and password
+            </Label>
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>

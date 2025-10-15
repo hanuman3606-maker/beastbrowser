@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { sessionManagerV2 } from '@/lib/supabase-session-manager-v2';
+import { authPersistenceService } from '@/services/authPersistenceService';
 import { User } from '@/types/auth';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -82,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: error.message };
       }
 
-      if (data.user) {
+      if (data.user && data.session) {
         const user: User = {
           id: data.user.id,
           email: data.user.email || '',
@@ -94,6 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         setCurrentUser(user);
         setIsAuthenticated(true);
+        
+        // 🔐 Initialize single session monitoring
+        await sessionManagerV2.initialize();
+        
+        console.log('✅ Login successful, session saved automatically by Supabase');
+        toast.success('Login successful!');
       }
 
       return { success: true };
@@ -105,22 +114,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try {
+      console.log('🚪 Logging out...');
+      
+      // 🔐 Destroy session monitoring
+      sessionManagerV2.destroy();
+      
+      // 🗑️ Clear saved credentials (Remember Me)
+      localStorage.removeItem('beast_remember_me');
+      localStorage.removeItem('beast_saved_email');
+      localStorage.removeItem('beast_saved_password');
+      console.log('🗑️ Saved credentials cleared');
+      
+      // 🗑️ Sign out from Supabase (clears localStorage automatically)
       await supabase.auth.signOut();
+      
       setCurrentUser(null);
       setIsAuthenticated(false);
+      
+      console.log('✅ Logout successful, session cleared');
+      toast.info('Logged out successfully');
     } catch (error: any) {
-      console.error('Logout error:', error);
+      console.error('❌ Logout error:', error);
     }
   }
 
   useEffect(() => {
-    // Check Supabase auth state
+    // Check Supabase auth state - Supabase handles persistence automatically
     const checkAuthState = async () => {
       try {
-        // Get current session
-        const { data: { session } } = await supabase.auth.getSession();
+        console.log('🔍 Checking auth state...');
+        
+        // Supabase automatically loads session from localStorage
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('❌ Session error:', error);
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+          setLoading(false);
+          return;
+        }
         
         if (session?.user) {
+          console.log('✅ Session found, auto-login successful!');
+          
           const user: User = {
             id: session.user.id,
             email: session.user.email || '',
@@ -129,14 +166,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             createdAt: session.user.created_at,
             lastLoginAt: new Date().toISOString()
           };
+          
           setCurrentUser(user);
           setIsAuthenticated(true);
+          
+          // Initialize session monitoring
+          await sessionManagerV2.initialize();
+          
+          console.log('✅ User auto-logged in:', user.email);
         } else {
+          console.log('ℹ️ No session found, showing login page');
           setCurrentUser(null);
           setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error('Auth state check error:', error);
+        console.error('❌ Auth state check error:', error);
         setCurrentUser(null);
         setIsAuthenticated(false);
       } finally {

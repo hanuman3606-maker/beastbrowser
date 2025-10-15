@@ -27,6 +27,11 @@
       "from": "electron",
       "to": "electron",
       "filter": ["free.ico", "preload-payment.js"]
+    },
+    {
+      "from": "ungoogled-chromium_139.0.7258.154-1.1_windows_x64",
+      "to": "ungoogled-chromium_139.0.7258.154-1.1_windows_x64",
+      "filter": ["**/*"]
     }
   ],
   "forceCodeSigning": false,

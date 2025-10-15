@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { userAgentLoader } from '@/lib/useragent-loader';
+import { fingerprintGenerator } from '@/data/fingerprints';
 
 interface CreateProfilePanelProps {
   isOpen: boolean;
@@ -252,7 +253,8 @@ const CreateProfilePanel: React.FC<CreateProfilePanelProps> = ({
         proxy: proxyData,
         startingUrl: formData.startingUrl.trim() || '',
         notes: formData.notes.trim() || '',
-        userAgentPlatform: formData.userAgentPlatform,
+        platform: formData.userAgentPlatform, // CRITICAL: Must be 'platform' not 'userAgentPlatform' for Playwright detection
+        userAgentPlatform: formData.userAgentPlatform, // Keep for backward compatibility
         // Only set userAgent if user provided a custom one, otherwise let Electron assign unique one
         userAgent: formData.customUserAgent.trim() || undefined,
         randomFingerprint: true, // Force Electron to generate unique fingerprint on launch
@@ -274,7 +276,7 @@ const CreateProfilePanel: React.FC<CreateProfilePanelProps> = ({
         proxyType: profileData.proxyType,
         proxyHost: proxyData?.host,
         timezone: profileData.timezone,
-        platform: profileData.userAgentPlatform,
+        platform: profileData.platform, // Show actual platform field used by Electron
         hasFingerprint: !!profileData.fingerprint
       });
 
@@ -341,58 +343,61 @@ const CreateProfilePanel: React.FC<CreateProfilePanelProps> = ({
   };
 
   const generateRandomFingerprint = async (platform: string) => {
-    const userAgent = await loadUserAgent(platform);
+    // Use the real fingerprint generator for truly random and realistic fingerprints
+    console.log(`🎲 [CreateProfilePanel] Generating random fingerprint for platform: ${platform}`);
     
-    const resolutions = {
-      windows: [
-        { width: 1920, height: 1080 },
-        { width: 1366, height: 768 },
-        { width: 1440, height: 900 },
-        { width: 1536, height: 864 },
-        { width: 1280, height: 720 }
-      ],
-      macos: [
-        { width: 1440, height: 900 },
-        { width: 1680, height: 1050 },
-        { width: 1920, height: 1080 }
-      ],
-      linux: [
-        { width: 1920, height: 1080 },
-        { width: 1366, height: 768 },
-        { width: 2560, height: 1440 }
-      ],
-      android: [
-        { width: 414, height: 915 },
-        { width: 393, height: 851 },
-        { width: 412, height: 915 }
-      ],
-      ios: [
-        { width: 414, height: 896 },
-        { width: 375, height: 812 },
-        { width: 428, height: 926 }
-      ]
-    };
-
-    const languages = ['en-US', 'en-GB', 'de-DE', 'fr-FR', 'es-ES', 'it-IT', 'ja-JP', 'zh-CN'];
+    const deviceType = platform === 'android' || platform === 'ios' ? 'mobile' : 'desktop';
+    const realFingerprint = fingerprintGenerator.generateRandomFingerprint(platform, deviceType);
     
-    const platformResolutions = resolutions[platform as keyof typeof resolutions] || resolutions.windows;
-    const randomResolution = platformResolutions[Math.floor(Math.random() * platformResolutions.length)];
-    const systemTimezone = getSystemTimezone();
-    const randomLanguage = languages[Math.floor(Math.random() * languages.length)];
-
+    console.log(`✅ [CreateProfilePanel] Generated fingerprint:`, {
+      cpu: realFingerprint.navigator.hardwareConcurrency,
+      memory: realFingerprint.navigator.deviceMemory,
+      screen: `${realFingerprint.screen.width}x${realFingerprint.screen.height}`,
+      timezone: realFingerprint.timezone,
+      userAgent: realFingerprint.userAgent.substring(0, 60) + '...'
+    });
+    
     return {
-      userAgent,
-      screen: randomResolution,
-      timezone: systemTimezone,
-      navigator: {
-        platform: platform === 'windows' ? 'Win32' : platform === 'macos' ? 'MacIntel' : platform === 'linux' ? 'Linux x86_64' : platform,
-        language: randomLanguage,
-        hardwareConcurrency: Math.floor(Math.random() * 8) + 2,
-        deviceMemory: [2, 4, 8, 16][Math.floor(Math.random() * 4)]
+      // User Agent
+      userAgent: realFingerprint.userAgent,
+      
+      // Screen (for UI display)
+      resolution: `${realFingerprint.screen.width}x${realFingerprint.screen.height}`,
+      screen: {
+        width: realFingerprint.screen.width,
+        height: realFingerprint.screen.height
       },
-      canvas: Math.random().toString(36).substring(7),
-      webgl: Math.random().toString(36).substring(7),
-      audio: Math.random().toString(36).substring(7)
+      
+      // Hardware (flat structure for UI)
+      hardwareConcurrency: realFingerprint.navigator.hardwareConcurrency,
+      deviceMemory: realFingerprint.navigator.deviceMemory,
+      platform: realFingerprint.navigator.platform,
+      language: realFingerprint.navigator.language,
+      maxTouchPoints: realFingerprint.navigator.maxTouchPoints,
+      
+      // Timezone
+      timezone: realFingerprint.timezone,
+      
+      // Navigator (nested for compatibility)
+      navigator: {
+        platform: realFingerprint.navigator.platform,
+        language: realFingerprint.navigator.language,
+        hardwareConcurrency: realFingerprint.navigator.hardwareConcurrency,
+        deviceMemory: realFingerprint.navigator.deviceMemory
+      },
+      
+      // Fingerprint hashes
+      canvas: realFingerprint.canvas,
+      webgl: realFingerprint.webgl,
+      audio: realFingerprint.audio,
+      
+      // WebGL
+      webglVendor: 'Google Inc.',
+      webglRenderer: `ANGLE (${realFingerprint.navigator.platform})`,
+      
+      // Canvas & Audio
+      canvasNoise: 'Enabled',
+      audioSampleRate: '48000'
     };
   };
 
@@ -637,7 +642,7 @@ const CreateProfilePanel: React.FC<CreateProfilePanelProps> = ({
                     value={formData.startingUrl}
                     onChange={(e) => handleInputChange('startingUrl', e.target.value)}
                     onBlur={() => handleFieldBlur('startingUrl')}
-                    placeholder="https://duckduckgo.com (default)"
+                    placeholder="Leave empty for test page (default)"
                     className={`bg-white border-gray-300 ${
                       fieldErrors.startingUrl ? 'border-red-500 focus:ring-red-500' : ''
                     }`}
@@ -645,7 +650,7 @@ const CreateProfilePanel: React.FC<CreateProfilePanelProps> = ({
                   {fieldErrors.startingUrl && (
                     <p className="text-red-500 text-xs mt-1">{fieldErrors.startingUrl}</p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">Leave empty to use DuckDuckGo search engine</p>
+                  <p className="text-xs text-gray-500 mt-1">Leave empty to use version detection test page</p>
                 </div>
 
                 <div>

@@ -1,0 +1,94 @@
+📱 MOBILE VIEWPORT TESTING GUIDE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ STEP 1: CREATE ANDROID PROFILE
+
+1. Open BeastBrowser
+2. Click "New Profile"
+3. Settings:
+   ✓ Name: Test Android
+   ✓ Platform: ANDROID (select from dropdown)
+   ✓ Leave other settings default
+4. Save profile
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ STEP 2: LAUNCH & CHECK CONSOLE
+
+1. Right-click profile → Launch
+2. When browser opens, press F12
+3. Go to "Console" tab
+4. Look for these messages:
+
+   Expected logs:
+   🔧 BeastBrowser: Mobile viewport injection
+   ✅ Mobile viewport meta tag injected
+   ✅ Screen dimensions overridden to mobile size
+   ✅ Mobile detection properties set
+   📱 Mobile viewport: 412x915 @ 2.625x
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ STEP 3: TEST ON WEBSITE
+
+In the browser, visit:
+   → google.com
+   → Should show MOBILE version ✅
+   
+   → facebook.com
+   → Should show MOBILE layout ✅
+   
+   → instagram.com
+   → Should show MOBILE interface ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ IF NOT WORKING - CHECK:
+
+1. Console Logs:
+   - Open Console (F12)
+   - Look for extension errors
+   - Screenshot and share
+
+2. Extension Loaded?
+   - Go to: chrome://extensions
+   - Should see "BeastBrowser Mobile Viewport"
+   - Should be ENABLED ✅
+
+3. User-Agent:
+   - In console, type: navigator.userAgent
+   - Should contain "Mobile" or "Android"
+
+4. Screen Size:
+   - In console, type: window.innerWidth
+   - Should return: 412 (for Android)
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🐛 COMMON ISSUES:
+
+Issue: Extension not loading
+Fix: Check main app console (not browser console)
+     Look for: "✅ MOBILE VIEWPORT EXTENSION CREATED"
+
+Issue: Website still desktop
+Fix: Hard refresh page (Ctrl+Shift+R)
+
+Issue: No console logs
+Fix: Extension might have error
+     Check chrome://extensions for errors
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📸 DEBUGGING INFO TO SHARE:
+
+If not working, share these:
+
+1. Main app console output (where you ran npm run electron-dev)
+2. Browser console (F12 → Console tab)
+3. chrome://extensions screenshot
+4. Result of: navigator.userAgent (in console)
+5. Result of: window.innerWidth (in console)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

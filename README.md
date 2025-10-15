@@ -1,6 +1,6 @@
-# 🦁 BeastBrowser v2.0.1
+# 🦁 BeastBrowser v2.0.2
 
-> Advanced Anti-Detection Browser with Proxy Support and Browser Automation
+> Advanced Anti-Detection Browser with Chrome 139 Runtime, Proxy Support and Browser Automation
 
 [![Build Status](https://github.com/rohitmen394/beastbrowser/workflows/Manual%20Build/badge.svg)](https://github.com/rohitmen394/beastbrowser/actions)
 [![Release](https://img.shields.io/github/v/release/rohitmen394/beastbrowser)](https://github.com/rohitmen394/beastbrowser/releases)
@@ -36,6 +36,18 @@
 - **Navigator Properties** - Customizable browser properties
 - **Timezone Matching** - Auto-detect from proxy IP
 
+### 🚀 Chrome 139 Runtime Integration (NEW!)
+- **Alternative Runtime** - Use Chrome 139 instead of default Beast browser
+- **Advanced Fingerprinting** - Seed-based deterministic fingerprint spoofing
+- **GPU Spoofing** - Custom WebGL vendor/renderer strings (Chrome 139+)
+- **Platform Emulation** - Windows/macOS/Linux with version control
+- **Brand Masking** - Appear as Chrome/Edge/Opera/Vivaldi/Brave
+- **Hardware Spoofing** - CPU cores, device memory, touch points
+- **Locale Control** - Timezone, language, accept-language headers
+- **Automated Testing** - One-click validation (CreepJS, BrowserLeaks, WebRTC)
+- **Crash Recovery** - Auto-detection of faulty profiles
+- **Full Logging** - Per-profile launch logs with stdout/stderr capture
+
 ### 🌐 Proxy Support
 - **HTTP/HTTPS/SOCKS5** - All major proxy protocols
 - **Bulk Import** - Import hundreds of proxies at once
@@ -56,9 +68,26 @@
 ### Download Latest Release
 
 1. Go to [Releases](https://github.com/rohitmen394/beastbrowser/releases)
-2. Download `BeastBrowser-Setup-2.0.1.exe`
+2. Download `BeastBrowser-Setup-2.0.2.exe`
 3. Run the installer
 4. Follow the setup wizard
+
+### Chrome 139 Runtime ✨ BUNDLED
+
+**Chrome 139 (ungoogled-chromium) comes pre-bundled!**
+
+1. **Just launch BeastBrowser** - Chrome 139 ready instantly!
+2. **Location**: `ungoogled-chromium_139.0.7258.154-1.1_windows_x64/chrome.exe`
+3. **Verify**: Go to Profile Settings > Runtime Selection
+   - Should show "Chrome 139 Available ✅"
+4. **Full Documentation**: See [CHROME139_INTEGRATION_GUIDE.md](CHROME139_INTEGRATION_GUIDE.md)
+
+**Features**:
+- 🚀 Pre-bundled Chrome 139 (300 MB ungoogled-chromium)
+- 🎭 6 Platform User-Agents (auto-injected from `useragents/` folder)
+- 🔄 No forced window sizes (natural browser behavior)
+- 🎲 Random user-agent per launch from txt files
+- ⚡ Instant startup (no extraction needed)
 
 ### System Requirements
 
@@ -114,7 +143,20 @@ npm run electron-dev
 npm run build:win
 ```
 
-Output: `build-output/BeastBrowser-Setup-2.0.1.exe`
+Output: `build-output/BeastBrowser-Setup-2.0.2.exe`
+
+### Run Chrome 139 Tests
+
+```bash
+# Quick runtime detection and launch test
+node test-chrome139-integration.js --quick
+
+# Full test suite with fingerprint validation
+node test-chrome139-integration.js
+
+# Run specific test only
+node test-chrome139-integration.js --test=webrtc
+```
 
 ---
 
@@ -213,7 +255,26 @@ This is a private project. For issues or suggestions, contact the development te
 
 ## 📝 Changelog
 
-### v2.0.1 (Current)
+### v2.0.2 (Current)
+
+#### Added ✅
+- **Chrome 139 Runtime Integration** - Alternative runtime with advanced fingerprinting
+- **Advanced Fingerprint Controls** - Seed, platform, brand, GPU, locale configuration
+- **GPU Spoofing** - WebGL vendor/renderer customization (Chrome 139+)
+- **Automated Test Suite** - CreepJS, BrowserLeaks, WebRTC, Cloudflare, WebGL tests
+- **Crash Recovery** - Auto-detection of repeatedly crashing profiles
+- **Per-Profile Logging** - Detailed stdout/stderr capture with timestamps
+- **Security/Ethics Warning** - Modal for accepting legal/ethical responsibilities
+- **Chrome 139 Integration Guide** - Comprehensive documentation
+- **Test Automation Script** - Command-line testing utility
+
+#### Enhanced ✅
+- Profile configuration UI with runtime selection
+- Proxy handling with authentication support
+- Error handling and user feedback
+- Documentation and troubleshooting guides
+
+### v2.0.1
 
 #### Added ✅
 - Complete blue-indigo professional theme

@@ -1,14 +1,146 @@
 /**
- * SOCKS5 Proxy Handler for Puppeteer
+ * SOCKS5 Proxy Handler with Automatic Timezone Detection
  * 
  * This file handles SOCKS5 proxy connections properly using proxy-chain
- * HTTP proxies are still handled in main.js (don't touch that!)
+ * and automatically detects timezone based on proxy IP location
  */
 
 const { Server } = require('proxy-chain');
+const http = require('http');
+const https = require('https');
 
 // Active SOCKS5 proxy servers map
 const activeSocksServers = new Map();
+
+// Timezone cache: proxyHost -> timezone
+const timezoneCache = new Map();
+
+/**
+ * Detect timezone from proxy IP using geolocation API
+ * @param {Object} tunnel - Active SOCKS5 tunnel
+ * @returns {Promise<string>} - Detected timezone (e.g., "America/Los_Angeles")
+ */
+async function detectProxyTimezone(tunnel) {
+  try {
+    console.log('🌍 Detecting timezone through proxy...');
+    console.log('🔍 Using local proxy tunnel:', tunnel.proxyUrl);
+    
+    // Try multiple APIs for better reliability with longer timeout
+    const apis = [
+      'http://ip-api.com/json/?fields=timezone,country,city,query',
+      'http://worldtimeapi.org/api/ip',
+      'http://ipapi.co/json/',
+      'http://ipinfo.io/json'
+    ];
+    
+    for (const apiUrl of apis) {
+      try {
+        const result = await makeProxyRequest(tunnel, apiUrl);
+        if (result) {
+          console.log('✅ Timezone detected successfully!');
+          return result;
+        }
+      } catch (err) {
+        console.warn('⚠️ API failed:', apiUrl, err.message);
+        continue;
+      }
+    }
+    
+    console.warn('⚠️ All APIs failed, using fallback');
+    return 'America/New_York';
+    
+  } catch (error) {
+    console.error('❌ Timezone detection error:', error.message);
+    return 'America/New_York';
+  }
+}
+
+/**
+ * Make HTTP request through proxy tunnel
+ */
+function makeProxyRequest(tunnel, targetUrl) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(tunnel.proxyUrl);
+    
+    const proxyOptions = {
+      hostname: url.hostname,
+      port: parseInt(url.port),
+      path: targetUrl,
+      method: 'GET',
+      timeout: 15000, // Increase timeout to 15 seconds
+      headers: {
+        'Host': new URL(targetUrl).hostname,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache'
+      }
+    };
+    
+    const req = http.request(proxyOptions, (res) => {
+      let data = '';
+      
+      res.on('data', chunk => data += chunk);
+      
+      res.on('end', () => {
+        try {
+          const geo = JSON.parse(data);
+          
+          // Try different response formats
+          let timezone = geo.timezone || geo.time_zone || geo.tz;
+          
+          // worldtimeapi.org format
+          if (!timezone && geo.timezone) {
+            timezone = geo.timezone;
+          }
+          
+          // ipinfo.io format
+          if (!timezone && geo.timezone) {
+            timezone = geo.timezone;
+          }
+          
+          // Additional fallbacks
+          if (!timezone && geo.data && geo.data.timezone) {
+            timezone = geo.data.timezone;
+          }
+          
+          if (timezone && timezone !== 'auto') {
+            console.log('✅ Detected from', targetUrl);
+            console.log('✅ Location:', geo.country || geo.country_name, '-', geo.city || geo.city_name);
+            console.log('✅ Timezone:', timezone);
+            console.log('✅ IP:', geo.query || geo.ip);
+            resolve(timezone);
+          } else {
+            // Try to construct timezone from offset if available
+            if (geo.utc_offset || geo.offset) {
+              const offset = geo.utc_offset || geo.offset;
+              console.log('⚠️ No timezone in response, trying to construct from offset:', offset);
+              // This is a fallback - not ideal but better than nothing
+              resolve('America/New_York'); // Default fallback
+            } else {
+              reject(new Error('No timezone in response'));
+            }
+          }
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+    
+    req.on('error', (err) => {
+      reject(err);
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Timeout'));
+    });
+    
+    req.end();
+  });
+}
 
 /**
  * Create a local HTTP proxy that forwards to SOCKS5
@@ -45,18 +177,31 @@ async function createSocks5Tunnel(socksConfig) {
       },
       verbose: false, // Disable verbose to reduce noise
       // Connection settings
-      maxSockets: Infinity, // No limit on connections
-      keepAlive: true,
-      keepAliveMsecs: 60000
+      maxSockets: 500, // Reduced to avoid overload
+      keepAlive: true, // Enable keep-alive for better performance
+      keepAliveMsecs: 15000, // 15 second keep-alive
+      // Retry settings
+      retryOnBlockedPage: true,
+      maxRequestRetries: 5, // Increased retries
+      requestTimeoutSecs: 90 // Increased timeout
     });
     
-    // Add error handler to server
-    server.on('connectionError', (err) => {
+    // Add comprehensive error handlers
+    server.on('connectionError', (err, connectionInfo) => {
       console.error('⚠️ SOCKS5 connection error:', err.message);
+      // Suppress internal assertion errors
+      if (err.code !== 'ERR_INTERNAL_ASSERTION') {
+        console.error('Connection info:', connectionInfo);
+      }
     });
     
     server.on('requestFailed', (err) => {
       console.error('⚠️ SOCKS5 request failed:', err.message);
+    });
+    
+    // Catch unhandled errors
+    server.on('error', (err) => {
+      console.error('⚠️ SOCKS5 server error:', err.message);
     });
     
     await server.listen();
@@ -159,21 +304,28 @@ function isSocks5Proxy(proxy) {
 }
 
 /**
- * Get Puppeteer launch args for SOCKS5 proxy
+ * Get Puppeteer/Chrome launch args for SOCKS5 proxy
  * Returns local HTTP proxy URL that tunnels to SOCKS5
+ * Also automatically detects timezone based on proxy location
  * 
  * @param {string} profileId - Profile ID
  * @param {Object} socksConfig - SOCKS5 configuration
- * @returns {Promise<Object>} - Tunnel info with proxy args
+ * @returns {Promise<Object>} - Tunnel info with proxy args and detected timezone
  */
 async function getSocks5ProxyArgs(profileId, socksConfig) {
   const tunnel = await getSocks5Tunnel(profileId, socksConfig);
   
+  // ALWAYS detect timezone (no cache - for accuracy)
+  console.log('🔄 Detecting timezone for this session...');
+  const timezone = await detectProxyTimezone(tunnel);
+  
   // Route ALL traffic through proxy including ads
   return {
     tunnel,
+    port: tunnel.localPort, // ✅ Chrome 139 compatibility
+    timezone, // ✅ Auto-detected timezone
     args: [
-      `--proxy-server=${tunnel.proxyUrl}`,
+      `--proxy-server=http://127.0.0.1:${tunnel.localPort}`, // Explicit HTTP protocol
       '--no-sandbox',
       '--disable-setuid-sandbox',
       // No proxy bypass - everything goes through proxy
@@ -198,46 +350,67 @@ async function testSocks5Connection(socksConfig) {
     // Create temporary tunnel
     tunnel = await createSocks5Tunnel(socksConfig);
     
-    // Try to make a request through the tunnel
-    const https = require('https');
+    // Try to make a request through the tunnel with retry logic
     const http = require('http');
     
     const testUrl = 'http://ip-api.com/json';
     
-    const result = await new Promise((resolve, reject) => {
-      const req = http.get(testUrl, {
-        agent: new http.Agent({
-          host: '127.0.0.1',
-          port: tunnel.localPort
-        })
-      }, (res) => {
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            resolve({
-              success: true,
-              ip: json.query,
-              country: json.country,
-              city: json.city,
-              message: 'SOCKS5 proxy working!'
+    // Retry up to 3 times
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`🔄 SOCKS5 test attempt ${attempt}/3`);
+        
+        const result = await new Promise((resolve, reject) => {
+          const req = http.get(testUrl, {
+            agent: new http.Agent({
+              host: '127.0.0.1',
+              port: tunnel.localPort
+            })
+          }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try {
+                const json = JSON.parse(data);
+                resolve({
+                  success: true,
+                  ip: json.query,
+                  country: json.country,
+                  city: json.city,
+                  message: 'SOCKS5 proxy working!',
+                  timezone: json.timezone
+                });
+              } catch (err) {
+                reject(new Error('Failed to parse response: ' + err.message));
+              }
             });
-          } catch (err) {
-            reject(new Error('Failed to parse response'));
-          }
+          });
+          
+          req.on('error', reject);
+          req.setTimeout(15000, () => reject(new Error('Connection timeout')));
         });
-      });
-      
-      req.on('error', reject);
-      req.setTimeout(10000, () => reject(new Error('Connection timeout')));
-    });
+        
+        // If we get here, the test succeeded
+        // Close test tunnel
+        await tunnel.server.close(true);
+        
+        console.log('✅ SOCKS5 test successful! IP:', result.ip, 'Country:', result.country, 'Timezone:', result.timezone);
+        return result;
+        
+      } catch (error) {
+        lastError = error;
+        console.warn(`⚠️ SOCKS5 test attempt ${attempt} failed:`, error.message);
+        
+        // Wait before retrying (except on last attempt)
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
     
-    // Close test tunnel
-    await tunnel.server.close(true);
-    
-    console.log('✅ SOCKS5 test successful! IP:', result.ip, 'Country:', result.country);
-    return result;
+    // If we get here, all attempts failed
+    throw lastError;
     
   } catch (error) {
     // Close test tunnel on error
@@ -249,7 +422,7 @@ async function testSocks5Connection(socksConfig) {
       }
     }
     
-    console.error('❌ SOCKS5 test failed:', error.message);
+    console.error('❌ SOCKS5 test failed after all retries:', error.message);
     return {
       success: false,
       error: error.message,

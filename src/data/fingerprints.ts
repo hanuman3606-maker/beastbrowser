@@ -127,13 +127,20 @@ export class FingerprintGenerator {
   }
 
   private async loadUserAgents() {
-    // Load user agents from JSON files
+    // Load user agents from TXT files (one per line)
     for (const platformName of Object.keys(this.platforms)) {
       try {
-        const response = await fetch(`/useragents/${platformName}.json`);
+        const response = await fetch(`/useragents/${platformName}.txt`);
         if (response.ok) {
-          const userAgents = await response.json();
+          const text = await response.text();
+          // Split by newline and filter out empty lines
+          const userAgents = text
+            .split('\n')
+            .map(ua => ua.trim())
+            .filter(ua => ua.length > 0);
+          
           this.platforms[platformName].userAgents = userAgents;
+          console.log(`✅ Loaded ${userAgents.length} user agents for ${platformName}`);
         }
       } catch (error) {
         console.warn(`Failed to load user agents for ${platformName}:`, error);
@@ -222,12 +229,12 @@ export class FingerprintGenerator {
 
   private getDefaultUserAgent(platform: string): string {
     const defaults: Record<string, string> = {
-      windows: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      macos: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      linux: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      ios: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
-      android: "Mozilla/5.0 (Linux; Android 14; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-      tv: "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 85.0.4183.93/6.0 TV Safari/537.36"
+      windows: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+      macos: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+      linux: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+      ios: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Mobile/15E148 Safari/604.1",
+      android: "Mozilla/5.0 (Linux; Android 15; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36",
+      tv: "Mozilla/5.0 (SMART-TV; LINUX; Tizen 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 TV Safari/537.36"
     };
     return defaults[platform] || defaults.windows;
   }
